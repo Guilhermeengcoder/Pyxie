@@ -1,0 +1,25 @@
+{
+    "tenho": {
+        "current": "tenho uma prova semana que vem , se  tenho prova dia 13",
+        "history": []
+    },
+    "se": {
+        "current": "se  tenho que sair as 15 horas amanha",
+        "history": []
+    },
+    "vou": {
+        "current": "vou sair amanha as 7 horas",
+        "history": []
+    },
+    "nota": {
+        "current": "tenho que tomar remedio as 21",
+        "history": [
+            {
+                "value": "tenho prova amanha",
+                "timestamp": "2026-03-04T20:48:30.661812"
+            }
+        ],
+        "created_at": "2026-03-04T20:48:30.661812",
+        "last_updated": "2026-03-04T21:18:54.271628"
+    }
+}
