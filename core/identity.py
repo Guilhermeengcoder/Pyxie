@@ -11,6 +11,7 @@ def carregar_identidade():
             "versao": "1.0",
             "criador": "Guilherme",
             "usuario_principal": "Guilherme",
+            "proposito": "Ser uma assistente pessoal inteligente",
             "personalidade": "amigavel",
             "lingua": "pt-br"
         }

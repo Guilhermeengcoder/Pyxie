@@ -1,8 +1,25 @@
 import random
 from core.memory import Memory
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from core.identity import obter_nome, obter_criador, obter_usuario
+from core.intent import detectar_intencao
+from core.personality import responder_saudacao
+from core.internet import buscar_web
+from core.knowledge import buscar_conhecimento, aprender
 
+
+def pensar(pergunta):
+
+    intencao = detectar_intencao(pergunta)
+
+    if intencao == "saudacao":
+        return responder_saudacao(obter_usuario())
+
+    if intencao == "identidade":
+        return "Eu sou a PYXIE."
+
+    return "Ainda estou aprendendo, mas posso aprender isso."
 
 
 class Brain:
@@ -11,25 +28,24 @@ class Brain:
         self.memory = Memory()
         self.modules = {}
 
-    # NOVO: registrar módulos
     def register_module(self, name, module):
         self.modules[name] = module
 
     def process(self, message):
+
         message = message.lower()
 
-        # Primeiro deixa os módulos tentarem responder
+        # Módulos externos
         for module in self.modules.values():
             if hasattr(module, "handle"):
                 response = module.handle(message)
                 if response:
                     return response
 
-        # Sistema de cálculo
+        # Cálculo
         if message.startswith("calcule") or message.startswith("quanto é"):
 
             expression = message.replace("calcule", "").replace("quanto é", "").strip()
-
             expression = expression.replace("?", "").replace("=", "")
 
             try:
@@ -38,10 +54,10 @@ class Brain:
             except:
                 return "Não consegui calcular essa conta."
 
-        # Hora atual
+        # Hora correta no Brasil
         if "hora" in message:
-            agora = datetime.now()
-            return f"Agora são {agora.hour}:{agora.minute}"
+            agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+            return f"Agora são {agora.strftime('%H:%M')}"
 
         # Saudações
         greetings = [
@@ -56,19 +72,13 @@ class Brain:
             return random.choice(greetings)
 
         # Recuperar memória
-        if "o que você sabe" in message:
+        if "o que você sabe" in message or "o que você lembra" in message:
             data = self.memory.data
             if data:
                 return str(data)
             return "Ainda não tenho registros."
 
-        if "o que você lembra" in message:
-            data = self.memory.data
-            if data:
-                return str(data)
-            return "Sobre isso não lembro de nada."
-
-        # Buscar palavra-chave
+        # Buscar memória
         if message.startswith("procure"):
             keyword = message.replace("procure", "").strip()
             results = self.memory.search(keyword)
@@ -77,6 +87,7 @@ class Brain:
                 return f"Encontrei: {results}"
             return "Nada encontrado."
 
+        # Identidade
         if "seu nome" in message:
             return f"Meu nome é {obter_nome()}."
 
@@ -84,6 +95,33 @@ class Brain:
             return f"Fui criada por {obter_criador()}."
 
         if "quem sou eu" in message:
-            return f"Você é {obter_usuario()}, meu criador."    
+            return f"Você é {obter_usuario()}, meu criador."
 
-        return "Processado."
+        # PESQUISA EXPLÍCITA
+        if message.startswith("pesquise") or message.startswith("procure na internet"):
+
+            pergunta = message.replace("pesquise", "").replace("procure na internet", "").strip()
+
+            resposta = buscar_web(pergunta)
+
+            if resposta:
+                return resposta
+
+            return "Não encontrei nada relevante."
+
+        # KNOWLEDGE ENGINE
+
+        resposta = buscar_conhecimento(message)
+
+        if resposta:
+            return resposta
+
+        # INTERNET AUTOMÁTICA
+
+        resposta = buscar_web(message)
+        if resposta:
+            aprender(message, resposta)
+            return resposta
+
+        return "Ainda não encontrei uma resposta para isso."
+        
