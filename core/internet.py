@@ -6,20 +6,27 @@ def buscar_web(pergunta):
 
     params = {
         "q": pergunta,
-        "format": "json"
+        "format": "json",
+        "no_html": 1,
+        "skip_disambig": 1
     }
 
     try:
         response = requests.get(url, params=params)
         data = response.json()
 
-        if data.get("Abstract"):
-            return data["Abstract"]
+        # resposta principal
+        if data.get("AbstractText"):
+            return data["AbstractText"]
 
+        # respostas relacionadas
         if data.get("RelatedTopics"):
-            return data["RelatedTopics"][0]["Text"]
+            for topic in data["RelatedTopics"]:
+                if isinstance(topic, dict) and topic.get("Text"):
+                    return topic["Text"]
 
-    except:
+    except Exception as e:
+        print("Erro na busca:", e)
         return None
 
     return None
