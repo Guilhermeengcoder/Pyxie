@@ -2,19 +2,16 @@ def detectar_intencao(pergunta):
 
     pergunta = pergunta.lower()
 
-    if "bom dia" in pergunta:
+    # saudações
+    if any(s in pergunta for s in ["bom dia", "boa tarde", "boa noite", "oi", "olá"]):
         return "saudacao"
 
-    if "boa tarde" in pergunta:
-        return "saudacao"
-
-    if "boa noite" in pergunta:
-        return "saudacao"
-
-    if "seu nome" in pergunta:
+    # identidade
+    if any(s in pergunta for s in ["seu nome", "quem é você", "quem é voce", "como você se chama"]):
         return "identidade"
 
-    if "horas" in pergunta:
+    # tempo
+    if "hora" in pergunta:
         return "tempo"
 
     return "desconhecido"
