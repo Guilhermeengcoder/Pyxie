@@ -1,3 +1,6 @@
+from datetime import datetime
+
+
 class SystemModule:
 
     GREETINGS = ["oi", "olá", "ola", "eai", "e aí", "bom dia", "boa tarde", "boa noite", "fala ai", "qual foi", "ei"]
@@ -10,5 +13,10 @@ class SystemModule:
 
         if "status" in message:
             return "Todos os sistemas funcionando."
+
+        # NOVO: comando de horas
+        if "hora" in message:
+            agora = datetime.now()
+            return f"Agora são {agora.strftime('%H:%M')}."
 
         return None

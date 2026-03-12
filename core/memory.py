@@ -38,8 +38,11 @@ class Memory:
 
             self.data[category]["history"].append({
                 "value": old,
-                "timestamp": self.data[category]["last_updated"]
+                "timestamp": self.data[category].get("last_updated", "")
             })
+
+            if "last_updated" not in self.data[category]:
+                self.data[category]["last_updated"] = timestamp
 
             self.data[category]["current"] = content
             self.data[category]["last_updated"] = timestamp

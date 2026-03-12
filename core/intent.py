@@ -15,3 +15,22 @@ def detectar_intencao(pergunta):
         return "tempo"
 
     return "desconhecido"
+
+
+# NOVA FUNÇÃO ADICIONADA (sem alterar a existente)
+
+def detectar_intencao_avancada(pergunta):
+
+    pergunta = pergunta.lower()
+
+    # variações mais amplas
+    if "voce" in pergunta and "quem" in pergunta:
+        return "identidade"
+
+    if "hora" in pergunta or "horas" in pergunta:
+        return "tempo"
+
+    if any(s in pergunta for s in ["oi", "ola", "opa", "eai", "fala"]):
+        return "saudacao"
+
+    return "desconhecido"

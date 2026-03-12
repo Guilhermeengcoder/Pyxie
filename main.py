@@ -1,10 +1,10 @@
-from core.brain import Brain
+from core.brain import brain
 from core.memory import Memory
 from core.context import Context
 from modules.system import SystemModule
 from fastapi import FastAPI
 
-brain = Brain()
+
 memory = Memory()
 context = Context()
 
@@ -29,10 +29,33 @@ if __name__ == "__main__":
         msg = input("Você: ").lower()
         context.add_message(msg)
 
+        # NOVO: listar memória quando perguntar
+        if "o que voce lembra" in msg or "oque voce lembra" in msg:
+            if memory.data:
+                print("PYXIE: Eu lembro de:")
+                for cat in memory.data:
+                    print("-", memory.data[cat]["current"])
+            else:
+                print("PYXIE: Ainda não lembro de nada.")
+            continue
+
+        # NOVO: comando de pesquisa web (não interfere na memória)
+        if msg.startswith("pesquise"):
+            resposta = brain.process(msg)
+
+            if resposta:
+                print("PYXIE:", resposta)
+            else:
+                print("PYXIE: Não encontrei nada relevante.")
+
+            continue
+
         if "lembre que" in msg or "lembrar que" in msg:
             content = msg.replace("lembre que", "").replace("lembrar que", "").strip()
             words = content.split()
-            category = words[0]
+
+            # proteção contra erro
+            category = words[0] if words else "nota"
 
             memory.remember(category, content)
             context.update_topic(category)

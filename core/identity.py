@@ -38,3 +38,41 @@ def obter_criador():
 def obter_usuario():
     identidade = carregar_identidade()
     return identidade["usuario_principal"]
+
+# -------------------------------------------------------
+# FUNÇÕES DE IDENTIDADE (ADITIVAS)
+# -------------------------------------------------------
+
+def apresentar():
+    identidade = carregar_identidade()
+    return (
+        f"Eu sou {identidade.get('nome_assistente', 'PYXIE')}, versão {identidade.get('versao', '1.0')}. "
+        f"Fui criada por {identidade.get('criador', 'desconhecido')}. "
+        f"Minha personalidade é {identidade.get('personalidade', 'indefinida')} e meu objetivo é: "
+        f"{identidade.get('proposito', 'não definido')}."
+    )
+    
+
+
+def atualizar_personalidade(nova_personalidade):
+    identidade = carregar_identidade()
+    identidade["personalidade"] = nova_personalidade
+
+    with open(ARQUIVO_IDENTIDADE, "w") as f:
+        json.dump(identidade, f, indent=4)
+
+
+def atualizar_usuario(novo_usuario):
+    identidade = carregar_identidade()
+    identidade["usuario_principal"] = novo_usuario
+
+    with open(ARQUIVO_IDENTIDADE, "w") as f:
+        json.dump(identidade, f, indent=4)
+
+
+def atualizar_proposito(novo_proposito):
+    identidade = carregar_identidade()
+    identidade["proposito"] = novo_proposito
+
+    with open(ARQUIVO_IDENTIDADE, "w") as f:
+        json.dump(identidade, f, indent=4)
