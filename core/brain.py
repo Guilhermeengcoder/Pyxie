@@ -1,17 +1,18 @@
 import random
 import unicodedata
-from core.memory import Memory
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+from core.memory import Memory
 from core.identity import obter_nome, obter_criador, obter_usuario, apresentar
-from core.intent import detectar_intencao
-from core.personality import responder_saudacao
+from core.personality import Personality
 from core.internet import buscar_web
 from core.knowledge import buscar_conhecimento, aprender
-from core.reminder import adicionar, listar, verificar
+from core.reminder import adicionar, listar
+from core.nlp_intent import NLPIntent
+from core.context import Context
 
 
-# função para normalizar texto
 def normalizar(texto):
     texto = texto.lower()
     texto = unicodedata.normalize("NFD", texto)
@@ -19,24 +20,15 @@ def normalizar(texto):
     return texto
 
 
-def pensar(pergunta):
-
-    intencao = detectar_intencao(pergunta)
-
-    if intencao == "saudacao":
-        return responder_saudacao(obter_usuario())
-
-    if intencao == "identidade":
-        return "Eu sou a PYXIE."
-
-    return "Ainda estou aprendendo, mas posso aprender isso."
-
-
 class Brain:
 
     def __init__(self):
+
         self.memory = Memory()
         self.modules = {}
+        self.nlp = NLPIntent()
+        self.personality = Personality()
+        self.context = Context()
 
     def register_module(self, name, module):
         self.modules[name] = module
@@ -45,128 +37,238 @@ class Brain:
 
         message = normalizar(message)
 
-        # módulos externos
-        for module in self.modules.values():
-            if hasattr(module, "handle"):
-                response = module.handle(message)
-                if response:
-                    return response
+        # salva histórico
+        self.context.add_message(message)
 
-        # cálculo
+        # ==============================
+        # CONTEXTO
+        # ==============================
+
+        topic = self.context.get_topic()
+
+        if topic:
+
+            pronomes = ["ele", "ela", "dele", "dela", "isso"]
+
+            palavras = message.split()
+
+            palavras = [topic if p in pronomes else p for p in palavras]
+
+            message = " ".join(palavras)
+
+            perguntas_contexto = ["quando", "onde", "como", "por que", "quem", "qual"]
+
+            if palavras and palavras[0] in perguntas_contexto and topic not in message:
+
+                message = f"{message} {topic}"
+
+        # ==============================
+        # NLP INTENT
+        # ==============================
+
+        intent = self.nlp.detectar(message)
+
+        if intent:
+
+            module = self.modules.get(intent)
+
+            if module and hasattr(module, "handle"):
+
+                response = module.handle(message)
+
+                if response:
+                    return self.personality.aplicar(response)
+
+        # ==============================
+        # CÁLCULOS
+        # ==============================
+
         if message.startswith("calcule") or message.startswith("quanto e"):
 
             expression = message.replace("calcule", "").replace("quanto e", "").strip()
             expression = expression.replace("?", "").replace("=", "")
 
-            try:
-                result = eval(expression)
-                return f"O resultado é {result}"
-            except:
-                return "Não consegui calcular essa conta."
+            allowed = "0123456789+-*/(). "
 
-        # hora correta no Brasil
+            if all(c in allowed for c in expression):
+
+                try:
+                    result = eval(expression)
+                    return self.personality.aplicar(f"O resultado é {result}")
+
+                except:
+                    return self.personality.aplicar("Não consegui calcular essa conta.")
+
+            else:
+                return self.personality.aplicar("Expressão inválida.")
+
+        # ==============================
+        # HORÁRIO
+        # ==============================
+
         if "hora" in message or "horas" in message:
-            agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-            return f"Agora são {agora.strftime('%H:%M')}"
 
-        # saudações
+            agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+
+            return self.personality.aplicar(
+                f"Agora são {agora.strftime('%H:%M')}"
+            )
+
+        # ==============================
+        # SAUDAÇÕES (corrigido)
+        # ==============================
+
         greetings = [
             "Olá 👋",
-            "Oi, Guilherme.",
+            f"Oi, {obter_usuario()}.",
             "Estou aqui.",
-            "Fala comigo.",
+            "PYXIE presente.",
             "Sempre pronta."
         ]
 
-        if any(word in message for word in ["oi", "ola", "opa", "eai", "fala ai", "tudo bem", "ei"]):
-            return random.choice(greetings)
+        palavras = message.split()
 
-        # recuperar memória
-        if "o que voce sabe" in message or "o que voce lembra" in message:
-            data = self.memory.data
-            if data:
-                return str(data)
-            return "Ainda não tenho registros."
+        saudacoes = ["oi", "ola", "opa", "eai", "fala"]
 
-        # buscar memória
-        if message.startswith("procure"):
-            keyword = message.replace("procure", "").strip()
-            results = self.memory.search(keyword)
+        if palavras and palavras[0] in saudacoes:
+            return self.personality.aplicar(random.choice(greetings))
 
-            if results:
-                return f"Encontrei: {results}"
-            return "Nada encontrado."
+        # ==============================
+        # IDENTIDADE
+        # ==============================
 
-        # reconhecer perguntas de identidade
         if any(p in message for p in [
             "quem e voce",
             "quem e vc",
             "como voce se chama"
         ]):
-            return f"Eu sou {obter_nome()}."
 
-        # lembretes
-        if "listar lembretes" in message:
-            return str(listar())
+            return self.personality.aplicar(f"Eu sou {obter_nome()}.")
 
-        if message.startswith("lembre-me"):
-            try:
-                partes = message.replace("lembre-me", "").strip().split(" as ")
-                texto = partes[0]
-                horario = partes[1]
-                adicionar(texto, horario)
-                return "Lembrete adicionado 👍"
-            except:
-                return "Use: lembre-me de X às HH:MM"
-
-        # identidade / apresentação
         if "seu nome" in message:
-            return f"Meu nome é {obter_nome()}."
+            return self.personality.aplicar(f"Meu nome é {obter_nome()}.")
 
         if "se apresente" in message or "apresente se" in message:
-            return apresentar()
+            return self.personality.aplicar(apresentar())
 
         if "quem te criou" in message:
-            return f"Fui criada por {obter_criador()}."
+            return self.personality.aplicar(f"Fui criada por {obter_criador()}.")
 
         if "quem sou eu" in message:
-            return f"Você é {obter_usuario()}, meu criador."
+            return self.personality.aplicar(f"Você é {obter_usuario()}, meu criador.")
 
-        # pesquisa explícita
+        # ==============================
+        # MEMÓRIA
+        # ==============================
+
+        if "o que voce lembra" in message or "o que voce sabe" in message:
+
+            data = self.memory.data
+
+            if data:
+                return self.personality.aplicar(str(data))
+
+            return self.personality.aplicar("Ainda não tenho registros.")
+
+        if message.startswith("memoria"):
+
+            keyword = message.replace("memoria", "").strip()
+
+            results = self.memory.search(keyword)
+
+            if results:
+                return self.personality.aplicar(f"Encontrei: {results}")
+
+            return self.personality.aplicar("Nada encontrado.")
+
+        # ==============================
+        # LEMBRETES
+        # ==============================
+
+        if "listar lembretes" in message:
+            return self.personality.aplicar(str(listar()))
+
+        if message.startswith("lembre-me"):
+
+            try:
+
+                partes = message.replace("lembre-me", "").strip().split(" as ")
+
+                texto = partes[0]
+                horario = partes[1]
+
+                adicionar(texto, horario)
+
+                return self.personality.aplicar("Lembrete adicionado 👍")
+
+            except:
+
+                return self.personality.aplicar("Use: lembre-me de X às HH:MM")
+
+        # ==============================
+        # PESQUISA EXPLÍCITA
+        # ==============================
+
         if message.startswith("pesquise") or message.startswith("procure na internet"):
 
             pergunta = message.replace("pesquise", "").replace("procure na internet", "").strip()
 
-            resposta = buscar_web(pergunta)
+            self.context.update_topic(pergunta)
 
-            if resposta:
-                return resposta
+            response = buscar_web(pergunta)
 
-            return "Não encontrei nada relevante."
+            if response:
+                return self.personality.aplicar(response)
 
-        # knowledge engine
-        resposta = buscar_conhecimento(message)
+            return self.personality.aplicar("Não encontrei nada relevante.")
 
-        if resposta:
-            return resposta
+        # ==============================
+        # KNOWLEDGE ENGINE
+        # ==============================
 
-        # internet automática
-        resposta = buscar_web(message)
+        response = buscar_conhecimento(message)
 
-        if resposta:
-            aprender(message, resposta)
-            return resposta
-    
-        return "Ainda não encontrei uma resposta para isso."
+        if response:
+            return self.personality.aplicar(response)
+
+        # ==============================
+        # INTERNET AUTOMÁTICA INTELIGENTE
+        # ==============================
+
+        perguntas_web = [
+            "quem",
+            "quando",
+            "onde",
+            "como",
+            "por que",
+            "o que",
+            "qual"
+        ]
+
+        palavras = message.split()
+
+        if palavras and palavras[0] in perguntas_web:
+
+            response = buscar_web(message)
+
+            if response:
+
+                aprender(message, response)
+
+                return self.personality.aplicar(response)
+
+        # ==============================
+
+        return self.personality.aplicar(
+            "Ainda não encontrei uma resposta para isso."
+        )
+
 
 from core.modules.memory_control import MemoryControl
-    
+
 brain = Brain()
 
 brain.register_module(
-
     "memory_control",
     MemoryControl(brain.memory)
 )
-    
-    

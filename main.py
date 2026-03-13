@@ -1,14 +1,23 @@
 from core.brain import brain
 from core.memory import Memory
 from core.context import Context
-from modules.system import SystemModule
 from fastapi import FastAPI
+from core.module_loader import carregar_modulos
+
+modulos = carregar_modulos()
+
+print("Módulos carregados:")
+
+for m in modulos:
+    print("-", m.__name__)
+
+    if hasattr(m, "Module"):
+        instancia = m.Module()
+        brain.register_module(instancia.name, instancia)
 
 
 memory = Memory()
 context = Context()
-
-brain.register_module("system", SystemModule())
 
 app = FastAPI()
 

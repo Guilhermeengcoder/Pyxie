@@ -10,7 +10,7 @@
         "last_updated": "2026-03-06T23:18:01.532563"
     },
     "se": {
-        "current": "se  vou a praia na quinta",
+        "current": "se  vou ao parque amanhã",
         "history": [
             {
                 "value": "se  tenho que sair as 15 horas amanha",
@@ -19,9 +19,13 @@
             {
                 "value": "se  vou sair amanha",
                 "timestamp": "2026-03-06T23:24:03.954032"
+            },
+            {
+                "value": "se  vou a praia na quinta",
+                "timestamp": "2026-03-06T23:24:21.417741"
             }
         ],
-        "last_updated": "2026-03-06T23:24:21.417741"
+        "last_updated": "2026-03-12T20:28:04.366686"
     },
     "vou": {
         "current": "vou comer pizza",
