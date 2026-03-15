@@ -1,5 +1,6 @@
 import json
 import os
+from core.language_pipeline import pipeline
 
 ARQUIVO_KNOWLEDGE = "data/knowledge.json"
 
@@ -23,6 +24,10 @@ def aprender(pergunta, resposta):
 
     data = carregar_conhecimento()
 
+    # aplica pipeline
+    tokens = pipeline.processar(pergunta)
+    pergunta = " ".join(tokens)
+
     chave = pergunta.lower()
 
     # Só aprende se resposta for relevante
@@ -35,6 +40,10 @@ def aprender(pergunta, resposta):
 def buscar_conhecimento(pergunta):
 
     data = carregar_conhecimento()
+
+    # aplica pipeline
+    tokens = pipeline.processar(pergunta)
+    pergunta = " ".join(tokens)
 
     pergunta = pergunta.lower()
 
