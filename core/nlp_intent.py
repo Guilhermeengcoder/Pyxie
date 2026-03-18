@@ -1,11 +1,13 @@
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 
 class NLPIntent:
 
     def __init__(self):
 
+        # 🔥 Modelo leve e eficiente
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
         self.intents = {
@@ -13,32 +15,42 @@ class NLPIntent:
             "hora": [
                 "que horas são",
                 "qual é o horário",
-                "me diga a hora"
+                "me diga a hora",
+                "pode me informar o horário atual"
             ],
 
             "saudacao": [
                 "oi",
                 "olá",
                 "bom dia",
-                "boa tarde"
+                "boa tarde",
+                "boa noite",
+                "eai",
+                "fala"
             ],
 
             "identidade": [
                 "quem é você",
                 "qual seu nome",
-                "quem te criou"
+                "quem te criou",
+                "o que você é",
+                "se apresente"
             ],
 
             "calculo": [
                 "quanto é",
                 "calcule",
-                "faça essa conta"
+                "faça essa conta",
+                "resolve essa conta",
+                "me diga o resultado"
             ],
 
             "pesquisa": [
                 "pesquise",
                 "procure na internet",
-                "busque informação"
+                "busque informação",
+                "quero saber sobre",
+                "me fale sobre"
             ],
 
             "memoria": [
@@ -50,10 +62,11 @@ class NLPIntent:
             ]
         }
 
-        self.intent_vectors = {}
-
-        for intent, frases in self.intents.items():
-            self.intent_vectors[intent] = self.model.encode(frases)
+        # 🔥 Pré-cálculo otimizado
+        self.intent_vectors = {
+            intent: self.model.encode(frases)
+            for intent, frases in self.intents.items()
+        }
 
     def detectar(self, pergunta):
 
@@ -64,13 +77,15 @@ class NLPIntent:
 
         for intent, vectors in self.intent_vectors.items():
 
-            score = cosine_similarity([pergunta_vec], vectors).max()
+            scores = cosine_similarity([pergunta_vec], vectors)[0]
+            score = np.max(scores)
 
             if score > melhor_score:
                 melhor_score = score
                 melhor_intent = intent
 
-        if melhor_score > 0.7:
+        # 🔥 Threshold inteligente
+        if melhor_score >= 0.65:
             return melhor_intent
 
-        return "desconhecido"
+        return None

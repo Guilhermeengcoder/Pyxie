@@ -15,16 +15,67 @@ from core.language_pipeline import LanguagePipeline
 
 
 def normalizar(texto):
-    texto = texto.lower()
+    texto = texto.lower().strip()
     texto = unicodedata.normalize("NFD", texto)
     texto = texto.encode("ascii", "ignore").decode("utf-8")
+
+    for c in [",", ".", "?", "!", ":"]:
+        texto = texto.replace(c, "")
+
+    texto = texto.replace("oque", "o que")
+
     return texto
+
+
+def limpar_pergunta(pergunta):
+    remover = [
+        "me fale sobre",
+        "fale sobre",
+        "me diga sobre",
+        "diga sobre",
+        "quero saber sobre",
+        "procure por",
+        "procure",
+        "pesquise",
+        "sobre"
+    ]
+
+    for r in remover:
+        pergunta = pergunta.replace(r, "")
+
+    return pergunta.strip()
+
+
+# 🔥 NOVO: melhora a query antes de buscar
+def melhorar_query(pergunta, context):
+
+    entity = context.get_entity()
+
+    if "idade" in pergunta or "quantos anos" in pergunta:
+        if entity:
+            return f"{entity} idade"
+
+    if "quando nasceu" in pergunta:
+        if entity:
+            return f"{entity} data de nascimento"
+
+    if "onde nasceu" in pergunta:
+        if entity:
+            return f"{entity} local de nascimento"
+
+    if "quando foi criado" in pergunta:
+        if entity:
+            return f"{entity} historia criacao"
+
+    if entity and len(pergunta.split()) <= 3:
+        return f"{entity} {pergunta}"
+
+    return pergunta
 
 
 class Brain:
 
     def __init__(self):
-
         self.memory = Memory()
         self.modules = {}
         self.nlp = NLPIntent()
@@ -37,105 +88,111 @@ class Brain:
 
     def process(self, message):
 
-        # ==============================
-        # INPUT ORIGINAL
-        # ==============================
-
         original_message = normalizar(message)
 
-        # ==============================
-        # PIPELINE
-        # ==============================
+        if original_message.startswith("pyxie"):
+            original_message = original_message.replace("pyxie", "", 1).strip()
 
         tokens = self.language.processar(original_message)
-
         processed_message = " ".join(tokens)
 
-        # salva histórico
         self.context.add_message(processed_message)
 
-        # ==============================
         # CONTEXTO
-        # ==============================
+        entity = self.context.get_entity() or self.context.get_topic()
 
-        topic = self.context.get_topic()
-
-        if topic:
-
-            pronomes = ["ele", "ela", "dele", "dela", "isso"]
+        if entity:
+            pronomes = ["ele", "ela", "dele", "dela", "isso", "esse", "essa"]
 
             palavras = processed_message.split()
-
-            palavras = [topic if p in pronomes else p for p in palavras]
+            palavras = [entity if p in pronomes else p for p in palavras]
 
             processed_message = " ".join(palavras)
 
-        # ==============================
-        # NLP INTENT
-        # ==============================
-
+        # NLP
         intent = self.nlp.detectar(processed_message)
 
         if intent:
+            self.context.set_intent(intent)
+
+            if intent == "saudacao":
+                respostas = [
+                    f"Oi, {obter_usuario()}.",
+                    f"Olá, {obter_usuario()}.",
+                    f"E aí, {obter_usuario()}."
+                ]
+                return self.personality.aplicar(random.choice(respostas))
+
+            if intent == "hora":
+                try:
+                    agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+                except:
+                    agora = datetime.now()
+
+                return self.personality.aplicar(
+                    f"Agora são {agora.strftime('%H:%M')}"
+                )
+
+            if intent == "identidade":
+                return self.personality.aplicar(
+                    f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
+                )
+
+            if intent == "calculo":
+                expression = processed_message.replace("calcule", "").replace("quanto e", "").strip()
+
+                allowed = "0123456789+-*/(). "
+
+                if all(c in allowed for c in expression):
+                    try:
+                        result = eval(expression)
+                        return self.personality.aplicar(f"O resultado é {result}")
+                    except:
+                        return self.personality.aplicar("Não consegui calcular essa conta.")
+
+            # 🔥 PESQUISA COM QUERY INTELIGENTE
+            if intent == "pesquisa":
+                pergunta = limpar_pergunta(original_message)
+
+                if len(pergunta.split()) >= 2:
+                    self.context.set_entity(pergunta)
+
+                self.context.update_topic(pergunta)
+
+                query = melhorar_query(pergunta, self.context)
+                response = buscar_web(query)
+
+                if response:
+                    return self.personality.aplicar(response)
+
+                return self.personality.aplicar(
+                    "Tive dificuldade para acessar a internet agora."
+                )
+
+            if intent == "memoria":
+                response = adicionar(processed_message)
+
+                if response:
+                    return self.personality.aplicar(response)
 
             module = self.modules.get(intent)
 
             if module and hasattr(module, "handle"):
-
                 response = module.handle(processed_message)
 
                 if response:
                     return self.personality.aplicar(response)
 
-        # ==============================
-        # CÁLCULOS
-        # ==============================
-
-        if original_message.startswith("calcule") or original_message.startswith("quanto e"):
-
-            expression = original_message.replace("calcule", "").replace("quanto e", "").strip()
-
-            allowed = "0123456789+-*/(). "
-
-            if all(c in allowed for c in expression):
-
-                try:
-                    result = eval(expression)
-                    return self.personality.aplicar(f"O resultado é {result}")
-
-                except:
-                    return self.personality.aplicar("Não consegui calcular essa conta.")
-
-        # ==============================
-        # HORÁRIO
-        # ==============================
-
-        if "hora" in original_message:
-
-            agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-
-            return self.personality.aplicar(
-                f"Agora são {agora.strftime('%H:%M')}"
-            )
-
-        # ==============================
-        # DATA
-        # ==============================
-
-        if "dia" in original_message or "data" in original_message:
-
-            agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-
-            return self.personality.aplicar(
-                f"Hoje é {agora.strftime('%d/%m/%Y')}"
-            )
-
-        # ==============================
         # SAUDAÇÕES
-        # ==============================
-
         if original_message.startswith("bom dia"):
-            return self.personality.aplicar(f"Bom dia, {obter_usuario()}.")
+            try:
+                agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+            except:
+                agora = datetime.now()
+
+            return self.personality.aplicar(
+                f"Bom dia, {obter_usuario()}. Hoje é {agora.strftime('%d/%m/%Y')}."
+            )
 
         if original_message.startswith("boa tarde"):
             return self.personality.aplicar(f"Boa tarde, {obter_usuario()}.")
@@ -146,107 +203,118 @@ class Brain:
         if original_message in ["oi", "ola", "opa", "eai", "fala"]:
             return self.personality.aplicar(f"Oi, {obter_usuario()}.")
 
-        # ==============================
         # IDENTIDADE
-        # ==============================
+        if "quem sou eu" in original_message:
+            return self.personality.aplicar(
+                f"Você é {obter_usuario()}, meu usuário."
+            )
 
-        if "quem e voce" in original_message:
-            return self.personality.aplicar(f"Eu sou {obter_nome()}.")
-
-        if "seu nome" in original_message:
-            return self.personality.aplicar(f"Meu nome é {obter_nome()}.")
+        if "quem e voce" in original_message or "quem e vc" in original_message:
+            return self.personality.aplicar(
+                f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
+            )
 
         if "quem te criou" in original_message:
-            return self.personality.aplicar(f"Fui criada por {obter_criador()}.")
+            return self.personality.aplicar(
+                f"Eu fui criada por {obter_criador()}."
+            )
 
-        if "quem sou eu" in original_message:
-            return self.personality.aplicar(f"Você é {obter_usuario()}, meu criador.")
-
-        if "se apresente" in original_message:
+        if "se apresente" in original_message or "apresente-se" in original_message:
             return self.personality.aplicar(apresentar())
 
-        # ==============================
-        # MEMÓRIA (APENAS COM COMANDO)
-        # ==============================
+        # CÁLCULO
+        if original_message.startswith("calcule") or original_message.startswith("quanto e"):
 
-        if original_message.startswith("memoria"):
+            expression = original_message.replace("calcule", "").replace("quanto e", "").strip()
 
-            keyword = original_message.replace("memoria", "").strip()
+            allowed = "0123456789+-*/(). "
 
-            results = self.memory.search(keyword)
+            if all(c in allowed for c in expression):
+                try:
+                    result = eval(expression)
+                    return self.personality.aplicar(f"O resultado é {result}")
+                except:
+                    return self.personality.aplicar("Não consegui calcular essa conta.")
 
-            if results:
-                return self.personality.aplicar(f"Encontrei: {results}")
+        # HORA / DATA
+        if "hora" in original_message:
 
-            return self.personality.aplicar("Nada encontrado.")
+            try:
+                agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+            except:
+                agora = datetime.now()
 
-        if "o que voce lembra" in original_message:
+            return self.personality.aplicar(
+                f"Agora são {agora.strftime('%H:%M')}"
+            )
 
-            data = self.memory.data
+        if "data" in original_message:
 
-            if data:
-                return self.personality.aplicar(str(data))
+            try:
+                agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+            except:
+                agora = datetime.now()
 
-            return self.personality.aplicar("Ainda não tenho registros.")
+            return self.personality.aplicar(
+                f"Hoje é {agora.strftime('%d/%m/%Y')}"
+            )
 
-        # ==============================
-        # LEMBRETES
-        # ==============================
+        # 🔥 PESQUISA EXPLÍCITA COM QUERY INTELIGENTE
+        if "pesquise" in original_message or "procure" in original_message:
 
-        if "listar lembretes" in original_message:
-            return self.personality.aplicar(str(listar()))
+            pergunta = limpar_pergunta(original_message)
 
-        # ==============================
-        # PESQUISA EXPLÍCITA
-        # ==============================
-
-        if original_message.startswith("pesquise"):
-
-            pergunta = original_message.replace("pesquise", "").strip()
+            if len(pergunta.split()) <= 2:
+                entity = self.context.get_entity()
+                if entity:
+                    pergunta = entity
 
             self.context.update_topic(pergunta)
 
-            response = buscar_web(pergunta)
+            query = melhorar_query(pergunta, self.context)
+            response = buscar_web(query)
 
             if response:
                 return self.personality.aplicar(response)
 
-        # ==============================
-        # KNOWLEDGE
-        # ==============================
+            return self.personality.aplicar(
+                "Tive dificuldade para acessar a internet agora."
+            )
 
+        # KNOWLEDGE
         response = buscar_conhecimento(processed_message)
 
         if response:
             return self.personality.aplicar(response)
 
-        # ==============================
         # INTERNET AUTOMÁTICA
-        # ==============================
-
         perguntas_web = [
-            "quem",
-            "quando",
-            "onde",
-            "como",
-            "por que",
-            "o que",
-            "qual",
-            "quantos",
-            "quantas"
+            "quem", "quando", "onde", "como",
+            "por que", "o que", "qual",
+            "quantos", "quantas"
         ]
 
         palavras = original_message.split()
 
         if palavras and palavras[0] in perguntas_web:
 
-            response = buscar_web(original_message)
+            pergunta = limpar_pergunta(original_message)
+
+            if len(pergunta.split()) <= 2:
+                entity = self.context.get_entity()
+                if entity:
+                    pergunta = entity
+
+            query = melhorar_query(pergunta, self.context)
+            response = buscar_web(query)
 
             if response:
-
                 aprender(processed_message, response)
-
                 return self.personality.aplicar(response)
+
+            return self.personality.aplicar(
+                "Não consegui buscar isso na internet agora."
+            )
 
         return self.personality.aplicar(
             "Ainda não encontrei uma resposta para isso."
