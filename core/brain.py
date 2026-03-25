@@ -13,6 +13,9 @@ from core.nlp_intent import NLPIntent
 from core.context import Context
 from core.language_pipeline import LanguagePipeline
 
+# 🔥 NOVO IMPORT (única adição real)
+from modules.ollama_ai import perguntar_ollama
+
 
 def normalizar(texto):
     texto = texto.lower().strip()
@@ -46,7 +49,6 @@ def limpar_pergunta(pergunta):
     return pergunta.strip()
 
 
-# 🔥 NOVO: melhora a query antes de buscar
 def melhorar_query(pergunta, context):
 
     entity = context.get_entity()
@@ -98,18 +100,14 @@ class Brain:
 
         self.context.add_message(processed_message)
 
-        # CONTEXTO
         entity = self.context.get_entity() or self.context.get_topic()
 
         if entity:
             pronomes = ["ele", "ela", "dele", "dela", "isso", "esse", "essa"]
-
             palavras = processed_message.split()
             palavras = [entity if p in pronomes else p for p in palavras]
-
             processed_message = " ".join(palavras)
 
-        # NLP
         intent = self.nlp.detectar(processed_message)
 
         if intent:
@@ -140,7 +138,6 @@ class Brain:
 
             if intent == "calculo":
                 expression = processed_message.replace("calcule", "").replace("quanto e", "").strip()
-
                 allowed = "0123456789+-*/(). "
 
                 if all(c in allowed for c in expression):
@@ -150,7 +147,6 @@ class Brain:
                     except:
                         return self.personality.aplicar("Não consegui calcular essa conta.")
 
-            # 🔥 PESQUISA COM QUERY INTELIGENTE
             if intent == "pesquisa":
                 pergunta = limpar_pergunta(original_message)
 
@@ -162,7 +158,7 @@ class Brain:
                 query = melhorar_query(pergunta, self.context)
                 response = buscar_web(query)
 
-                if response:
+                if response is not None and response != "":
                     return self.personality.aplicar(response)
 
                 return self.personality.aplicar(
@@ -172,7 +168,7 @@ class Brain:
             if intent == "memoria":
                 response = adicionar(processed_message)
 
-                if response:
+                if response is not None and response != "":
                     return self.personality.aplicar(response)
 
             module = self.modules.get(intent)
@@ -180,10 +176,9 @@ class Brain:
             if module and hasattr(module, "handle"):
                 response = module.handle(processed_message)
 
-                if response:
+                if response is not None and response != "":
                     return self.personality.aplicar(response)
 
-        # SAUDAÇÕES
         if original_message.startswith("bom dia"):
             try:
                 agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
@@ -203,7 +198,6 @@ class Brain:
         if original_message in ["oi", "ola", "opa", "eai", "fala"]:
             return self.personality.aplicar(f"Oi, {obter_usuario()}.")
 
-        # IDENTIDADE
         if "quem sou eu" in original_message:
             return self.personality.aplicar(
                 f"Você é {obter_usuario()}, meu usuário."
@@ -222,11 +216,8 @@ class Brain:
         if "se apresente" in original_message or "apresente-se" in original_message:
             return self.personality.aplicar(apresentar())
 
-        # CÁLCULO
         if original_message.startswith("calcule") or original_message.startswith("quanto e"):
-
             expression = original_message.replace("calcule", "").replace("quanto e", "").strip()
-
             allowed = "0123456789+-*/(). "
 
             if all(c in allowed for c in expression):
@@ -236,9 +227,7 @@ class Brain:
                 except:
                     return self.personality.aplicar("Não consegui calcular essa conta.")
 
-        # HORA / DATA
         if "hora" in original_message:
-
             try:
                 agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
             except:
@@ -249,7 +238,6 @@ class Brain:
             )
 
         if "data" in original_message:
-
             try:
                 agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
             except:
@@ -259,9 +247,7 @@ class Brain:
                 f"Hoje é {agora.strftime('%d/%m/%Y')}"
             )
 
-        # 🔥 PESQUISA EXPLÍCITA COM QUERY INTELIGENTE
         if "pesquise" in original_message or "procure" in original_message:
-
             pergunta = limpar_pergunta(original_message)
 
             if len(pergunta.split()) <= 2:
@@ -274,20 +260,18 @@ class Brain:
             query = melhorar_query(pergunta, self.context)
             response = buscar_web(query)
 
-            if response:
+            if response is not None and response != "":
                 return self.personality.aplicar(response)
 
             return self.personality.aplicar(
                 "Tive dificuldade para acessar a internet agora."
             )
 
-        # KNOWLEDGE
         response = buscar_conhecimento(processed_message)
 
-        if response:
+        if response is not None and response != "":
             return self.personality.aplicar(response)
 
-        # INTERNET AUTOMÁTICA
         perguntas_web = [
             "quem", "quando", "onde", "como",
             "por que", "o que", "qual",
@@ -308,7 +292,7 @@ class Brain:
             query = melhorar_query(pergunta, self.context)
             response = buscar_web(query)
 
-            if response:
+            if response is not None and response != "":
                 aprender(processed_message, response)
                 return self.personality.aplicar(response)
 
@@ -316,12 +300,19 @@ class Brain:
                 "Não consegui buscar isso na internet agora."
             )
 
+        # 🔥 AQUI ESTÁ O OLLAMA (fallback final)
+        contexto = self.context.get_entity() or ""
+        response = perguntar_ollama(original_message, contexto)
+        
+        if response is not None and response != "":
+            return self.personality.aplicar(response)
+
         return self.personality.aplicar(
             "Ainda não encontrei uma resposta para isso."
         )
 
 
-from core.modules.memory_control import MemoryControl
+from core.memory_control import MemoryControl
 
 brain = Brain()
 

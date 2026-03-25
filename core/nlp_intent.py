@@ -84,8 +84,14 @@ class NLPIntent:
                 melhor_score = score
                 melhor_intent = intent
 
-        # 🔥 Threshold inteligente
+    # 🔥 Threshold inteligente
         if melhor_score >= 0.65:
             return melhor_intent
+
+    # 🔥 fallback manual
+        pergunta_lower = pergunta.lower()
+
+        if "hora" in pergunta_lower or "dia" in pergunta_lower or "data" in pergunta_lower:
+            return "hora"
 
         return None
