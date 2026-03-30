@@ -20,8 +20,12 @@ def processar_mensagem(msg: str):
     # =========================
     # 🔥 MÓDULOS (ANTES DE TUDO)
     # =========================
-    for nome, func in modulos.items():
-        resposta = func(msg)
+    for nome, modulo in modulos.items():
+        print("Testando módulo:", nome)
+        
+        resposta = modulo.run(msg)
+        print(f"[DEBUG] {nome} -> {resposta}")
+        
         if resposta:
             return resposta
 

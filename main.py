@@ -9,7 +9,7 @@ modulos = carregar_modulos()
 print("Módulos carregados:")
 
 for m in modulos:
-    print("-", m.__name__)
+    print("-", __name__)
 
     if hasattr(m, "Module"):
         instancia = m.Module()

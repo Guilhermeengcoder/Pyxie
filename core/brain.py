@@ -12,8 +12,8 @@ from core.reminder import adicionar, listar
 from core.nlp_intent import NLPIntent
 from core.context import Context
 from core.language_pipeline import LanguagePipeline
+from core.conversation_memory import ConversationMemory
 
-# 🔥 NOVO IMPORT (única adição real)
 from modules.ollama_ai import perguntar_ollama
 
 
@@ -32,15 +32,8 @@ def normalizar(texto):
 
 def limpar_pergunta(pergunta):
     remover = [
-        "me fale sobre",
-        "fale sobre",
-        "me diga sobre",
-        "diga sobre",
-        "quero saber sobre",
-        "procure por",
-        "procure",
-        "pesquise",
-        "sobre"
+        "me fale sobre", "fale sobre", "me diga sobre", "diga sobre",
+        "quero saber sobre", "procure por", "procure", "pesquise", "sobre"
     ]
 
     for r in remover:
@@ -50,7 +43,6 @@ def limpar_pergunta(pergunta):
 
 
 def melhorar_query(pergunta, context):
-
     entity = context.get_entity()
 
     if "idade" in pergunta or "quantos anos" in pergunta:
@@ -75,6 +67,13 @@ def melhorar_query(pergunta, context):
     return pergunta
 
 
+def extrair_pergunta(texto):
+    partes = texto.split(",")
+    if len(partes) > 1:
+        return partes[1].strip()
+    return None
+
+
 class Brain:
 
     def __init__(self):
@@ -84,6 +83,8 @@ class Brain:
         self.personality = Personality()
         self.context = Context()
         self.language = LanguagePipeline()
+
+        self.conv_memory = ConversationMemory(limite=5)
 
     def register_module(self, name, module):
         self.modules[name] = module
@@ -108,6 +109,47 @@ class Brain:
             palavras = [entity if p in pronomes else p for p in palavras]
             processed_message = " ".join(palavras)
 
+        # CUMPRIMENTO
+
+        if original_message.startswith("bom dia"):
+            try:
+                agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+            except:
+                agora = datetime.now()
+
+            resposta = f"Bom dia, {obter_usuario()}. Hoje é {agora.strftime('%d/%m/%Y')}."
+            pergunta = extrair_pergunta(original_message)
+
+            if pergunta:
+                resposta_ia = perguntar_ollama(pergunta, "")
+                if resposta_ia:
+                    resposta += " " + resposta_ia
+
+            return self.personality.aplicar(resposta)
+
+        if original_message.startswith("boa tarde"):
+            resposta = f"Boa tarde, {obter_usuario()}."
+            pergunta = extrair_pergunta(original_message)
+
+            if pergunta:
+                resposta_ia = perguntar_ollama(pergunta, "")
+                if resposta_ia:
+                    resposta += " " + resposta_ia
+
+            return self.personality.aplicar(resposta)
+
+        if original_message.startswith("boa noite"):
+            resposta = f"Boa noite, {obter_usuario()}."
+            pergunta = extrair_pergunta(original_message)
+
+            if pergunta:
+                resposta_ia = perguntar_ollama(pergunta, "")
+                if resposta_ia:
+                    resposta += " " + resposta_ia
+
+            return self.personality.aplicar(resposta)
+
+        # NLP
         intent = self.nlp.detectar(processed_message)
 
         if intent:
@@ -122,15 +164,13 @@ class Brain:
                 return self.personality.aplicar(random.choice(respostas))
 
             if intent == "hora":
-                try:
-                    agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-                except:
-                    agora = datetime.now()
-
-                return self.personality.aplicar(
-                    f"Agora são {agora.strftime('%H:%M')}"
-                )
-
+                module = self.modules.get("hora")
+                
+                if module and hasattr(module, "run"):
+                    response = module.run(original_message)
+                    if response:
+                        return self.personality.aplicar(response)
+                
             if intent == "identidade":
                 return self.personality.aplicar(
                     f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
@@ -158,45 +198,30 @@ class Brain:
                 query = melhorar_query(pergunta, self.context)
                 response = buscar_web(query)
 
-                if response is not None and response != "":
+                if response:
                     return self.personality.aplicar(response)
 
-                return self.personality.aplicar(
-                    "Tive dificuldade para acessar a internet agora."
-                )
+                return self.personality.aplicar("Tive dificuldade para acessar a internet agora.")
 
             if intent == "memoria":
                 response = adicionar(processed_message)
-
-                if response is not None and response != "":
+                if response:
                     return self.personality.aplicar(response)
 
             module = self.modules.get(intent)
 
-            if module and hasattr(module, "handle"):
-                response = module.handle(processed_message)
-
-                if response is not None and response != "":
+            # 🔥 CORREÇÃO AQUI
+            if module and hasattr(module, "run"):
+                response = module.run(original_message)
+                if response:
                     return self.personality.aplicar(response)
 
-        if original_message.startswith("bom dia"):
-            try:
-                agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-            except:
-                agora = datetime.now()
+        # CONHECIMENTO LOCAL
+        response = buscar_conhecimento(processed_message)
+        if response:
+            return self.personality.aplicar(response)
 
-            return self.personality.aplicar(
-                f"Bom dia, {obter_usuario()}. Hoje é {agora.strftime('%d/%m/%Y')}."
-            )
-
-        if original_message.startswith("boa tarde"):
-            return self.personality.aplicar(f"Boa tarde, {obter_usuario()}.")
-
-        if original_message.startswith("boa noite"):
-            return self.personality.aplicar(f"Boa noite, {obter_usuario()}.")
-
-        if original_message in ["oi", "ola", "opa", "eai", "fala"]:
-            return self.personality.aplicar(f"Oi, {obter_usuario()}.")
+        # RESPOSTAS FIXAS
 
         if "quem sou eu" in original_message:
             return self.personality.aplicar(
@@ -213,103 +238,28 @@ class Brain:
                 f"Eu fui criada por {obter_criador()}."
             )
 
-        if "se apresente" in original_message or "apresente-se" in original_message:
-            return self.personality.aplicar(apresentar())
-
-        if original_message.startswith("calcule") or original_message.startswith("quanto e"):
-            expression = original_message.replace("calcule", "").replace("quanto e", "").strip()
-            allowed = "0123456789+-*/(). "
-
-            if all(c in allowed for c in expression):
-                try:
-                    result = eval(expression)
-                    return self.personality.aplicar(f"O resultado é {result}")
-                except:
-                    return self.personality.aplicar("Não consegui calcular essa conta.")
-
-        if "hora" in original_message:
-            try:
-                agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-            except:
-                agora = datetime.now()
-
+        if "qual e o seu proposito" in original_message or "qual seu proposito" in original_message:
             return self.personality.aplicar(
-                f"Agora são {agora.strftime('%H:%M')}"
+                "Meu propósito é te ajudar, aprender com você e facilitar suas tarefas no dia a dia."
             )
 
-        if "data" in original_message:
-            try:
-                agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-            except:
-                agora = datetime.now()
+        # FALLBACK IA COM MEMÓRIA
 
-            return self.personality.aplicar(
-                f"Hoje é {agora.strftime('%d/%m/%Y')}"
-            )
+        contexto_memoria = self.conv_memory.gerar_contexto()
+        contexto_extra = self.context.get_entity() or ""
+        contexto_final = contexto_memoria + "\n" + contexto_extra
 
-        if "pesquise" in original_message or "procure" in original_message:
-            pergunta = limpar_pergunta(original_message)
+        try:
+            response = perguntar_ollama(original_message, contexto_final)
+        except:
+            response = None
 
-            if len(pergunta.split()) <= 2:
-                entity = self.context.get_entity()
-                if entity:
-                    pergunta = entity
+        if response:
+            resposta_final = self.personality.aplicar(response)
+            self.conv_memory.adicionar(message, resposta_final)
+            return resposta_final
 
-            self.context.update_topic(pergunta)
-
-            query = melhorar_query(pergunta, self.context)
-            response = buscar_web(query)
-
-            if response is not None and response != "":
-                return self.personality.aplicar(response)
-
-            return self.personality.aplicar(
-                "Tive dificuldade para acessar a internet agora."
-            )
-
-        response = buscar_conhecimento(processed_message)
-
-        if response is not None and response != "":
-            return self.personality.aplicar(response)
-
-        perguntas_web = [
-            "quem", "quando", "onde", "como",
-            "por que", "o que", "qual",
-            "quantos", "quantas"
-        ]
-
-        palavras = original_message.split()
-
-        if palavras and palavras[0] in perguntas_web:
-
-            pergunta = limpar_pergunta(original_message)
-
-            if len(pergunta.split()) <= 2:
-                entity = self.context.get_entity()
-                if entity:
-                    pergunta = entity
-
-            query = melhorar_query(pergunta, self.context)
-            response = buscar_web(query)
-
-            if response is not None and response != "":
-                aprender(processed_message, response)
-                return self.personality.aplicar(response)
-
-            return self.personality.aplicar(
-                "Não consegui buscar isso na internet agora."
-            )
-
-        # 🔥 AQUI ESTÁ O OLLAMA (fallback final)
-        contexto = self.context.get_entity() or ""
-        response = perguntar_ollama(original_message, contexto)
-        
-        if response is not None and response != "":
-            return self.personality.aplicar(response)
-
-        return self.personality.aplicar(
-            "Ainda não encontrei uma resposta para isso."
-        )
+        return self.personality.aplicar("Ainda não encontrei uma resposta para isso.")
 
 
 from core.memory_control import MemoryControl
@@ -320,3 +270,7 @@ brain.register_module(
     "memory_control",
     MemoryControl(brain.memory)
 )
+
+from modules.hora import Module as HoraModule
+
+brain.register_module("hora", HoraModule())

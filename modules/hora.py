@@ -1,21 +1,36 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 class Module:
 
     name = "hora"
 
-    def handle(self, msg):
-
+    def run(self, msg):
         msg = msg.lower()
 
-        if "dia" in msg or "data" in msg:
-            hoje = datetime.now().strftime("%d/%m/%Y")
-            return f"Hoje é {hoje}"
+        try:
+            agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+        except:
+            agora = datetime.now()
 
+        dias = {
+            "monday": "segunda-feira",
+            "tuesday": "terça-feira",
+            "wednesday": "quarta-feira",
+            "thursday": "quinta-feira",
+            "friday": "sexta-feira",
+            "saturday": "sábado",
+            "sunday": "domingo"
+        }
+
+        # 🔥 DATA (FORÇADO)
+        if "dia" in msg:
+            dia_semana = dias.get(agora.strftime("%A").lower(), "")
+            return f"Hoje é {dia_semana}, {agora.strftime('%d/%m/%Y')}"
+
+        # 🔥 HORA
         if "hora" in msg:
-            agora = datetime.now().strftime("%H:%M")
-            return f"Agora são {agora}"
-
+            return f"Agora são {agora.strftime('%H:%M')}"
 
         return None
