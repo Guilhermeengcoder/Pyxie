@@ -9,10 +9,10 @@ from core.personality import Personality
 from core.internet import buscar_web
 from core.knowledge import buscar_conhecimento, aprender
 from core.reminder import adicionar, listar
-from core.nlp_intent import NLPIntent
 from core.context import Context
 from core.language_pipeline import LanguagePipeline
 from core.conversation_memory import ConversationMemory
+from core.router import decidir
 
 from modules.ollama_ai import perguntar_ollama
 
@@ -79,15 +79,17 @@ class Brain:
     def __init__(self):
         self.memory = Memory()
         self.modules = {}
-        self.nlp = NLPIntent()
         self.personality = Personality()
         self.context = Context()
         self.language = LanguagePipeline()
-
         self.conv_memory = ConversationMemory(limite=5)
 
     def register_module(self, name, module):
         self.modules[name] = module
+
+    # --------------------------------------------------
+    # ENTRY POINT
+    # --------------------------------------------------
 
     def process(self, message):
 
@@ -101,6 +103,7 @@ class Brain:
 
         self.context.add_message(processed_message)
 
+        # Resolução de pronomes via contexto
         entity = self.context.get_entity() or self.context.get_topic()
 
         if entity:
@@ -109,12 +112,14 @@ class Brain:
             palavras = [entity if p in pronomes else p for p in palavras]
             processed_message = " ".join(palavras)
 
-        # CUMPRIMENTO
+        # --------------------------------------------------
+        # CUMPRIMENTOS
+        # --------------------------------------------------
 
         if original_message.startswith("bom dia"):
             try:
                 agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-            except:
+            except Exception:
                 agora = datetime.now()
 
             resposta = f"Bom dia, {obter_usuario()}. Hoje é {agora.strftime('%d/%m/%Y')}."
@@ -149,79 +154,101 @@ class Brain:
 
             return self.personality.aplicar(resposta)
 
-        # NLP
-        intent = self.nlp.detectar(processed_message)
+        # --------------------------------------------------
+        # 🔥 DECISÃO CENTRALIZADA VIA ROUTER
+        # --------------------------------------------------
 
-        if intent:
-            self.context.set_intent(intent)
+        decisao = decidir(original_message, self.context)
+        modulo = decisao["modulo"]
 
-            if intent == "saudacao":
-                respostas = [
-                    f"Oi, {obter_usuario()}.",
-                    f"Olá, {obter_usuario()}.",
-                    f"E aí, {obter_usuario()}."
-                ]
-                return self.personality.aplicar(random.choice(respostas))
+        # --------------------------------------------------
+        # MÓDULOS EXTERNOS REGISTRADOS
+        # ✅ CORRIGIDO: só executa o módulo escolhido
+        # --------------------------------------------------
 
-            if intent == "hora":
-                module = self.modules.get("hora")
-                
-                if module and hasattr(module, "run"):
-                    response = module.run(original_message)
-                    if response:
-                        return self.personality.aplicar(response)
-                
-            if intent == "identidade":
-                return self.personality.aplicar(
-                    f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
-                )
+        modulo_instancia = self.modules.get(modulo)
 
-            if intent == "calculo":
-                expression = processed_message.replace("calcule", "").replace("quanto e", "").strip()
-                allowed = "0123456789+-*/(). "
+        if modulo_instancia and hasattr(modulo_instancia, "handle"):
+            resposta = modulo_instancia.handle(processed_message)
+            if resposta:
+                return self.personality.aplicar(resposta)
 
-                if all(c in allowed for c in expression):
-                    try:
-                        result = eval(expression)
-                        return self.personality.aplicar(f"O resultado é {result}")
-                    except:
-                        return self.personality.aplicar("Não consegui calcular essa conta.")
+        # --------------------------------------------------
+        # HANDLERS INTERNOS POR MÓDULO
+        # --------------------------------------------------
 
-            if intent == "pesquisa":
-                pergunta = limpar_pergunta(original_message)
+        if modulo == "saudacao":
+            respostas = [
+                f"Oi, {obter_usuario()}.",
+                f"Olá, {obter_usuario()}.",
+                f"E aí, {obter_usuario()}."
+            ]
+            return self.personality.aplicar(random.choice(respostas))
 
-                if len(pergunta.split()) >= 2:
-                    self.context.set_entity(pergunta)
-
-                self.context.update_topic(pergunta)
-
-                query = melhorar_query(pergunta, self.context)
-                response = buscar_web(query)
-
-                if response:
-                    return self.personality.aplicar(response)
-
-                return self.personality.aplicar("Tive dificuldade para acessar a internet agora.")
-
-            if intent == "memoria":
-                response = adicionar(processed_message)
-                if response:
-                    return self.personality.aplicar(response)
-
-            module = self.modules.get(intent)
-
-            # 🔥 CORREÇÃO AQUI
+        if modulo == "hora":
+            module = self.modules.get("hora")
             if module and hasattr(module, "run"):
                 response = module.run(original_message)
                 if response:
                     return self.personality.aplicar(response)
 
-        # CONHECIMENTO LOCAL
-        response = buscar_conhecimento(processed_message)
-        if response:
-            return self.personality.aplicar(response)
+        if modulo == "identidade":
+            if "se apresente" in original_message or "apresente" in original_message:
+                return self.personality.aplicar(apresentar())
+            return self.personality.aplicar(
+                f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
+            )
 
+        if modulo == "calculo":
+            expression = (
+                processed_message
+                .replace("calcule", "")
+                .replace("quanto e", "")
+                .strip()
+            )
+            allowed = "0123456789+-*/(). "
+            if all(c in allowed for c in expression):
+                try:
+                    result = eval(expression)
+                    return self.personality.aplicar(f"O resultado é {result}")
+                except Exception:
+                    pass
+            return self.personality.aplicar("Não consegui calcular essa conta.")
+
+        if modulo in ("internet", "pesquisa"):
+            pergunta = limpar_pergunta(original_message)
+
+            if len(pergunta.split()) >= 2:
+                self.context.set_entity(pergunta)
+
+            self.context.update_topic(pergunta)
+            query = melhorar_query(pergunta, self.context)
+            response = buscar_web(query)
+
+            if response:
+                aprender(processed_message, response)
+                return self.personality.aplicar(response)
+
+            return self.personality.aplicar(
+                "Tive dificuldade para acessar a internet agora."
+            )
+
+        if modulo == "memoria":
+            conteudo = (
+                processed_message
+                .replace("lembre que", "")
+                .replace("lembrar que", "")
+                .strip()
+            )
+            palavras = conteudo.split()
+            categoria = palavras[0] if palavras else "nota"
+            self.memory.remember(categoria, conteudo)
+            self.context.update_topic(categoria)
+            return self.personality.aplicar("Informação salva.")
+
+        # --------------------------------------------------
         # RESPOSTAS FIXAS
+        # --------------------------------------------------
 
         if "quem sou eu" in original_message:
             return self.personality.aplicar(
@@ -243,7 +270,17 @@ class Brain:
                 "Meu propósito é te ajudar, aprender com você e facilitar suas tarefas no dia a dia."
             )
 
-        # FALLBACK IA COM MEMÓRIA
+        # --------------------------------------------------
+        # CONHECIMENTO LOCAL
+        # --------------------------------------------------
+
+        response = buscar_conhecimento(processed_message)
+        if response:
+            return self.personality.aplicar(response)
+
+        # --------------------------------------------------
+        # FALLBACK FINAL: OLLAMA COM MEMÓRIA
+        # --------------------------------------------------
 
         contexto_memoria = self.conv_memory.gerar_contexto()
         contexto_extra = self.context.get_entity() or ""
@@ -251,7 +288,7 @@ class Brain:
 
         try:
             response = perguntar_ollama(original_message, contexto_final)
-        except:
+        except Exception:
             response = None
 
         if response:
@@ -262,15 +299,13 @@ class Brain:
         return self.personality.aplicar("Ainda não encontrei uma resposta para isso.")
 
 
+# =========================
+# INSTÂNCIA GLOBAL
+# =========================
+
 from core.memory_control import MemoryControl
-
-brain = Brain()
-
-brain.register_module(
-    "memory_control",
-    MemoryControl(brain.memory)
-)
-
 from modules.hora import Module as HoraModule
 
+brain = Brain()
+brain.register_module("memory_control", MemoryControl(brain.memory))
 brain.register_module("hora", HoraModule())
