@@ -8,7 +8,7 @@ def carregar_identidade():
     if not os.path.exists(ARQUIVO_IDENTIDADE):
         identidade_padrao = {
             "nome_assistente": "PYXIE",
-            "versao": "1.0",
+            "versao": "3.0",
             "criador": "Guilherme",
             "usuario_principal": "Guilherme",
             "proposito": "Ser uma assistente pessoal inteligente",

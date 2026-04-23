@@ -71,4 +71,4 @@ class Memory:
     def get_history(self, category):
         if category in self.data:
             return self.data[category]["history"]
-        return []
+        return [] 

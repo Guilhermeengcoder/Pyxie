@@ -16,6 +16,10 @@ from core.router import decidir
 
 from modules.ollama_ai import perguntar_ollama
 
+# 🔥 NOVOS IMPORTS
+from core.memory_extractor import extrair_e_salvar
+from core.memory_manager import gerar_contexto_para_prompt
+
 
 def normalizar(texto):
     texto = texto.lower().strip()
@@ -103,6 +107,9 @@ class Brain:
 
         self.context.add_message(processed_message)
 
+        # 🔥 EXTRAÇÃO DE MEMÓRIA AUTOMÁTICA (ANTES DA RESPOSTA)
+        extrair_e_salvar(message)
+
         # Resolução de pronomes via contexto
         entity = self.context.get_entity() or self.context.get_topic()
 
@@ -155,16 +162,11 @@ class Brain:
             return self.personality.aplicar(resposta)
 
         # --------------------------------------------------
-        # 🔥 DECISÃO CENTRALIZADA VIA ROUTER
+        # DECISÃO CENTRAL
         # --------------------------------------------------
 
         decisao = decidir(original_message, self.context)
         modulo = decisao["modulo"]
-
-        # --------------------------------------------------
-        # MÓDULOS EXTERNOS REGISTRADOS
-        # ✅ CORRIGIDO: só executa o módulo escolhido
-        # --------------------------------------------------
 
         modulo_instancia = self.modules.get(modulo)
 
@@ -174,7 +176,7 @@ class Brain:
                 return self.personality.aplicar(resposta)
 
         # --------------------------------------------------
-        # HANDLERS INTERNOS POR MÓDULO
+        # MÓDULOS INTERNOS
         # --------------------------------------------------
 
         if modulo == "saudacao":
@@ -227,6 +229,10 @@ class Brain:
 
             if response:
                 aprender(processed_message, response)
+
+                # 🔥 salva episódio também
+                extrair_e_salvar(message, response, pergunta)
+
                 return self.personality.aplicar(response)
 
             return self.personality.aplicar(
@@ -244,6 +250,10 @@ class Brain:
             categoria = palavras[0] if palavras else "nota"
             self.memory.remember(categoria, conteudo)
             self.context.update_topic(categoria)
+
+            # 🔥 salva também no novo sistema
+            extrair_e_salvar(message)
+
             return self.personality.aplicar("Informação salva.")
 
         # --------------------------------------------------
@@ -279,12 +289,18 @@ class Brain:
             return self.personality.aplicar(response)
 
         # --------------------------------------------------
-        # FALLBACK FINAL: OLLAMA COM MEMÓRIA
+        # 🔥 FALLBACK FINAL COM MEMÓRIA AVANÇADA
         # --------------------------------------------------
 
-        contexto_memoria = self.conv_memory.gerar_contexto()
+        contexto_memoria_db = gerar_contexto_para_prompt(original_message)
+        contexto_conversa = self.conv_memory.gerar_contexto()
         contexto_extra = self.context.get_entity() or ""
-        contexto_final = contexto_memoria + "\n" + contexto_extra
+
+        contexto_final = (
+            contexto_memoria_db + "\n\n" +
+            contexto_conversa + "\n\n" +
+            contexto_extra
+        )
 
         try:
             response = perguntar_ollama(original_message, contexto_final)
@@ -293,7 +309,12 @@ class Brain:
 
         if response:
             resposta_final = self.personality.aplicar(response)
+
             self.conv_memory.adicionar(message, resposta_final)
+
+            # 🔥 EXTRAÇÃO FINAL COMPLETA
+            extrair_e_salvar(message, resposta_final, self.context.get_topic())
+
             return resposta_final
 
         return self.personality.aplicar("Ainda não encontrei uma resposta para isso.")

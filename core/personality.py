@@ -1,5 +1,4 @@
 import random
-from core.identity import carregar_identidade
 
 def responder_saudacao(usuario):
 
@@ -12,34 +11,37 @@ def responder_saudacao(usuario):
 
     return random.choice(respostas)
 
+
 class Personality:
 
     def __init__(self):
-
         self.estilo = "amigavel"
 
-        self.prefixos = [
-            "",
-            "Claro. ",
-            "Entendi. ",
-            "Certo. ",
-            "Deixa eu ver. "
-        ]
+        self.sufixos = {
+            "ajuda": [
+                " Se precisar de mais alguma coisa é só falar.",
+                " Posso te ajudar com mais algo se quiser."
+            ],
+            "normal": [
+                ""
+            ],
+            "comando": [
+                ""
+            ],
+            "saudacao": [
+                "",
+                " Como posso te ajudar hoje?"
+            ]
+        }
 
-        self.sufixos = [
-            "",
-            "",
-            "",
-            " Se precisar de mais alguma coisa é só falar.",
-            " Estou aqui se precisar."
-        ]
-
-    def aplicar(self, resposta):
+    def aplicar(self, resposta, tipo="normal"):
 
         if not resposta:
             return resposta
 
-        prefixo = random.choice(self.prefixos)
-        sufixo = random.choice(self.sufixos)
+        if tipo not in self.sufixos:
+            tipo = "normal"
 
-        return f"{prefixo}{resposta}{sufixo}"
+        sufixo = random.choice(self.sufixos[tipo])
+
+        return f"{resposta}{sufixo}"
