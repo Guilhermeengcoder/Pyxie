@@ -4,28 +4,21 @@ from core.memory_manager import salvar_fato, salvar_episodio, salvar_explicita
 
 # =========================
 # PADRÕES DE FATOS DO USUÁRIO
-# Adicione ou edite à vontade
 # =========================
 
 PADROES_FATOS = [
-    # nome
     (r"meu nome [eé] ([a-záàâãéèêíïóôõöúçñ\s]+)", "nome"),
     (r"pode me chamar de ([a-záàâãéèêíïóôõöúçñ\s]+)", "nome"),
 
-    # profissão
-    (r"(?:sou|trabalho como) ([a-záàâãéèêíïóôõöúçñ\s]+)", "profissao"),
+    # ⚠️ profissão mais segura
+    (r"trabalho como ([a-záàâãéèêíïóôõöúçñ\s]+)", "profissao"),
 
-    # preferências
     (r"(?:gosto de|adoro|prefiro) ([a-záàâãéèêíïóôõöúçñ\s,]+)", "preferencia"),
     (r"(?:não gosto de|detesto|odeio) ([a-záàâãéèêíïóôõöúçñ\s,]+)", "nao_gosta"),
 
-    # localização
     (r"(?:moro em|sou de|vivo em) ([a-záàâãéèêíïóôõöúçñ\s]+)", "localizacao"),
-
-    # idade
     (r"tenho (\d{1,3}) anos", "idade"),
 
-    # rotina
     (r"(?:acordo|durmo|almoço|janto) (?:às|as) (\d{1,2}(?::\d{2})?)", "rotina"),
 ]
 
@@ -38,36 +31,78 @@ TRIGGERS_EXPLICITA = [
     "lembre que",
     "lembrar que",
     "não esqueça que",
+    "nao esqueca que",
     "guarde que",
     "memorize que",
     "anota que",
 ]
 
 
+# =========================
+# BLOQUEIOS IMPORTANTES
+# =========================
+
+FRASES_BLOQUEADAS = [
+    "o que voce",
+    "voce lembra",
+    "se lembra",
+    "voce sabe",
+    "me diga",
+    "me fala",
+    "me explique",
+]
+
+
 def extrair_e_salvar(mensagem: str, resposta: str = None, topico: str = None):
-    """
-    Analisa a mensagem (e opcionalmente a resposta) e salva
-    automaticamente o que for relevante na memória.
-    """
     msg = mensagem.lower().strip()
 
-    # 1. Memória explícita (pedido direto do usuário)
+    # 🚫 1. IGNORAR PERGUNTAS
+    if msg.endswith("?"):
+        return
+
+    # 🚫 2. IGNORAR FRASES GENÉRICAS
+    if any(frase in msg for frase in FRASES_BLOQUEADAS):
+        return
+
+    # =========================
+    # 3. MEMÓRIA EXPLÍCITA
+    # =========================
     for trigger in TRIGGERS_EXPLICITA:
         if trigger in msg:
             conteudo = msg.split(trigger, 1)[-1].strip()
-            if conteudo:
+            if conteudo and len(conteudo) > 3:
                 salvar_explicita(conteudo)
-            return  # se foi explícita, não precisa continuar
+            return
 
-    # 2. Fatos sobre o usuário (detecção automática)
+    # =========================
+    # 4. FATOS DO USUÁRIO
+    # =========================
     for padrao, chave in PADROES_FATOS:
         match = re.search(padrao, msg)
         if match:
             valor = match.group(1).strip().rstrip(".,!?")
-            if len(valor) > 1:
-                salvar_fato(chave, valor)
 
-    # 3. Episódio da conversa (salva o tópico se houve pesquisa)
+            # 🚫 filtro extra
+            if len(valor) < 2:
+                continue
+
+            # 🚫 evita coisas tipo "sou feliz", "sou cansado"
+            if chave == "profissao":
+                palavras_invalidas = ["feliz", "triste", "cansado", "ocupado"]
+                if any(p in valor for p in palavras_invalidas):
+                    continue
+
+            salvar_fato(chave, valor)
+
+    # =========================
+    # 5. EPISÓDIO (COM CONTROLE)
+    # =========================
     if topico and len(topico) > 3:
-        resumo = resposta[:120] if resposta else mensagem[:120]
-        salvar_episodio(topico, resumo)
+        if resposta:
+            resumo = resposta[:120]
+        else:
+            resumo = mensagem[:120]
+
+        # 🚫 evita salvar coisa inútil
+        if len(resumo.strip()) > 10:
+            salvar_episodio(topico, resumo)

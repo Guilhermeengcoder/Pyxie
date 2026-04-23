@@ -1,41 +1,49 @@
+from core.memory_manager import (
+    buscar_todos_fatos,
+    buscar_episodios_recentes,
+    buscar_explicitas
+)
+
+
 class MemoryControl:
 
-    def __init__(self, memory):
-        self.memory = memory
+    def handle(self, message: str):
 
-    def handle(self, message):
+        msg = message.lower()
 
+        # =========================
+        # LISTAR MEMÓRIA (NATURAL)
+        # =========================
+        if "o que voce lembra" in msg or "o que você lembra" in msg:
 
-        # listar memórias
-        if "liste memorias" in message or "mostrar memorias" in message:
+            fatos = buscar_todos_fatos()
+            episodios = buscar_episodios_recentes(3)
 
-            data = self.memory.data
+            if not fatos and not episodios:
+                return "Ainda não tenho muitas informações sobre você."
 
-            if not data:
-                return "Não tenho memórias registradas."
+            partes = []
 
-            resposta = "Eu lembro de:\n"
+            if fatos:
+                partes.append("Eu sei algumas coisas sobre você:")
+                for k, v in fatos.items():
+                    partes.append(f"- Seu {k} é {v}")
 
-            for item in data:
-                resposta += f"- {item}\n"
+            if episodios:
+                partes.append("\nTambém lembro de coisas que você comentou recentemente:")
+                for e in episodios:
+                    partes.append(f"- {e['resumo']}")
 
-            return resposta
+            return "\n".join(partes)
 
-        # apagar memória
-        if message.startswith("esqueca") or message.startswith("esqueça"):
+        # =========================
+        # APAGAR MEMÓRIA
+        # =========================
+        if msg.startswith("esqueca") or msg.startswith("esqueça"):
 
-            termo = message.replace("esqueca", "").replace("esqueça", "").strip()
+            termo = msg.replace("esqueca", "").replace("esqueça", "").strip()
 
-            resultados = self.memory.search(termo)
-
-            if not resultados:
-                return "Não encontrei essa memória."
-
-            for r in resultados:
-                self.memory.data.remove(r)
-
-            self.memory.save()
-
-            return "Memória apagada."
+            # aqui você pode evoluir depois pra DELETE real no banco
+            return f"Ainda não sei apagar memórias específicas, mas estou evoluindo nisso 😉"
 
         return None

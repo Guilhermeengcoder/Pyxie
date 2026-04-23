@@ -50,7 +50,13 @@ class NLPIntent:
                 "procure na internet",
                 "busque informação",
                 "quero saber sobre",
-                "me fale sobre"
+                "me fale sobre",
+                "oque é",
+                "oq é",
+                "o que significa",
+                "me explica",
+                "explique",
+                "defina"
             ],
 
             "memoria": [
