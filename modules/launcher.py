@@ -16,7 +16,7 @@ class Module:
 
     TRIGGERS = [
         "abra o chrome",
-        "abre o chrome",
+        "abre chrome",
         "abrir chrome",
         "abra o google chrome",
         "abre o google chrome",
