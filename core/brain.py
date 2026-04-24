@@ -3,6 +3,7 @@ import unicodedata
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from core.module_loader import carregar_modulos
 from core.memory import Memory
 from core.identity import obter_nome, obter_criador, obter_usuario, apresentar
 from core.personality import Personality
@@ -12,7 +13,7 @@ from core.reminder import adicionar, listar
 from core.context import Context
 from core.language_pipeline import LanguagePipeline
 from core.conversation_memory import ConversationMemory
-from core.router import decidir
+from core.decision import decidir
 
 from modules.ollama_ai import perguntar_ollama
 
@@ -81,8 +82,9 @@ def extrair_pergunta(texto):
 class Brain:
 
     def __init__(self):
+
         self.memory = Memory()
-        self.modules = {}
+        self.modules = carregar_modulos()  # ✅ CORREÇÃO
         self.personality = Personality()
         self.context = Context()
         self.language = LanguagePipeline()
@@ -161,19 +163,42 @@ class Brain:
 
             return self.personality.aplicar(resposta)
 
-        # --------------------------------------------------
-        # DECISÃO CENTRAL
-        # --------------------------------------------------
+       # --------------------------------------------------
+       # DECISÃO CENTRAL
+       # --------------------------------------------------
 
         decisao = decidir(original_message, self.context)
-        modulo = decisao["modulo"]
+        categoria = decisao.get("destino")
+        
+        modulo = categoria
 
-        modulo_instancia = self.modules.get(modulo)
+        # 🔥 filtra módulos pela categoria (se tiver)
+        modulos_candidatos = []
 
-        if modulo_instancia and hasattr(modulo_instancia, "handle"):
-            resposta = modulo_instancia.handle(processed_message)
-            if resposta:
-                return self.personality.aplicar(resposta)
+        if categoria:
+            for m in self.modules.values():
+                if getattr(m, "category", None) == categoria:
+                    modulos_candidatos.append(m)
+
+        # 🔥 fallback: se não achou nenhum, testa todos
+        if not modulos_candidatos:
+            modulos_candidatos = list(self.modules.values())
+
+        # 🔥 tenta executar módulos
+        for modulo_instancia in modulos_candidatos:
+            try:
+                if hasattr(modulo_instancia, "handle"):
+                    resposta = modulo_instancia.handle(processed_message)
+                elif hasattr(modulo_instancia, "run"):
+                    resposta = modulo_instancia.run(processed_message)
+                else:
+                    continue
+
+                if resposta:
+                    return self.personality.aplicar(resposta)
+
+            except Exception as e:
+                print(f"[ERRO módulo {modulo_instancia.name}]: {e}")
 
         # --------------------------------------------------
         # MÓDULOS INTERNOS
@@ -229,10 +254,7 @@ class Brain:
 
             if response:
                 aprender(processed_message, response)
-
-                # 🔥 salva episódio também
                 extrair_e_salvar(message, response, pergunta)
-
                 return self.personality.aplicar(response)
 
             return self.personality.aplicar(
@@ -251,9 +273,7 @@ class Brain:
             self.memory.remember(categoria, conteudo)
             self.context.update_topic(categoria)
 
-            # 🔥 salva também no novo sistema
             extrair_e_salvar(message)
-
             return self.personality.aplicar("Informação salva.")
 
         # --------------------------------------------------
@@ -289,7 +309,7 @@ class Brain:
             return self.personality.aplicar(response)
 
         # --------------------------------------------------
-        # 🔥 FALLBACK FINAL COM MEMÓRIA AVANÇADA
+        # 🔥 FALLBACK FINAL
         # --------------------------------------------------
 
         contexto_memoria_db = gerar_contexto_para_prompt(original_message)
@@ -309,12 +329,8 @@ class Brain:
 
         if response:
             resposta_final = self.personality.aplicar(response)
-
             self.conv_memory.adicionar(message, resposta_final)
-
-            # 🔥 EXTRAÇÃO FINAL COMPLETA
             extrair_e_salvar(message, resposta_final, self.context.get_topic())
-
             return resposta_final
 
         return self.personality.aplicar("Ainda não encontrei uma resposta para isso.")
@@ -328,5 +344,5 @@ from core.memory_control import MemoryControl
 from modules.hora import Module as HoraModule
 
 brain = Brain()
-brain.register_module("memory_control", MemoryControl(brain.memory))
+brain.register_module("memory_control", MemoryControl())
 brain.register_module("hora", HoraModule())

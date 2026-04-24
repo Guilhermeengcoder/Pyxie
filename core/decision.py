@@ -158,11 +158,27 @@ def _checar_lembrete(msg: str):
     return 0.0
 
 
+def _checar_launcher(msg: str):
+    triggers = [
+        "abre", "abra", "abrir",
+        "inicia", "inicie",
+        "abre o chrome", "abra o chrome",
+        "abrir o chrome"
+    ]
+
+    if any(t in msg for t in triggers):
+        return 0.9
+
+    return 0.0
+
+
 # =============================================================
 # MAPA DE REGRAS
 # =============================================================
 
 REGRAS = {
+     "launcher": _checar_launcher,
+     
     "internet_explicita": _checar_pesquisa_explicita,
     "memoria": _checar_memoria,
     "lembrete": _checar_lembrete,

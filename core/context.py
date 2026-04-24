@@ -52,3 +52,6 @@ class Context:
         self.current_topic = None
         self.entity = None
         self.last_intent = None
+        
+    def get(self, key, default=None):
+        return getattr(self, key, default)
