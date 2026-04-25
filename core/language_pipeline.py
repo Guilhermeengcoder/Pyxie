@@ -1,104 +1,100 @@
 import unicodedata
+import re
 
 
 class LanguagePipeline:
 
     def __init__(self):
-
-        # =========================
-        # STOPWORDS (artigos/preposições)
-        # =========================
-
-        self.stopwords = {
-            "o","a","os","as",
-            "um","uma","uns","umas",
-            "de","do","da","dos","das",
-            "em","no","na","nos","nas",
-            "para","por","com",
-            "e","ou","mas"
-        }
-
-        # =========================
-        # ERROS COMUNS
-        # =========================
-
+        # ==================================================
+        # DICIONÁRIO DE CORREÇÕES
+        # Corrige abreviações e erros comuns de digitação
+        # ==================================================
         self.correcoes = {
-            "qantos": "quantos",
-            "qanto": "quanto",
-            "qntos": "quantos",
-            "qntas": "quantas",
-            "oque": "o que",
             "pq": "por que",
+            "q": "que",
+            "n": "nao",
             "tb": "tambem",
             "vc": "voce",
-            "vcs": "voces"
+            "vcs": "voces",
+            "blz": "beleza",
+            "msg": "mensagem"
         }
 
-    # =========================
-    # NORMALIZAÇÃO
-    # =========================
+    # ==================================================
+    # EXTRAÇÃO DE PALAVRAS-CHAVE
+    # Remove palavras muito curtas (ex: "de", "a", "e")
+    # sem destruir o contexto geral
+    # ==================================================
+    def extrair_palavras_chave(self, tokens):
+        return [t for t in tokens if len(t) > 2]
 
+    # ==================================================
+    # NORMALIZAÇÃO DE TEXTO
+    # - Converte para minúsculas
+    # - Remove acentos (ex: "ação" → "acao")
+    # ==================================================
     def normalizar(self, texto):
-
         texto = texto.lower()
-
         texto = unicodedata.normalize("NFD", texto)
         texto = texto.encode("ascii", "ignore").decode("utf-8")
-
         return texto
 
-    # =========================
-    # CORREÇÃO ORTOGRÁFICA
-    # =========================
-
+    # ==================================================
+    # CORREÇÃO ORTOGRÁFICA SIMPLES
+    # - Aplica correções com base no dicionário
+    # - Usa tokenização para evitar problemas com pontuação
+    # ==================================================
     def corrigir(self, texto):
-
-        palavras = texto.split()
-
-        palavras_corrigidas = [
-            self.correcoes.get(p, p) for p in palavras
-        ]
-
-        return " ".join(palavras_corrigidas)
-
-    # =========================
-    # TOKENIZAÇÃO
-    # =========================
-
-    def tokenizar(self, texto):
-
-        return texto.split()
-
-    # =========================
-    # REMOÇÃO DE STOPWORDS
-    # =========================
-
-    def remover_stopwords(self, tokens):
-
-        return [
-            t for t in tokens
-            if t not in self.stopwords
-        ]
-
-    # =========================
-    # PIPELINE COMPLETO
-    # =========================
-
-    def processar(self, texto):
-
-        texto = self.normalizar(texto)
-
-        texto = self.corrigir(texto)
-
         tokens = self.tokenizar(texto)
 
-        tokens = self.remover_stopwords(tokens)
+        tokens_corrigidos = [
+            self.correcoes.get(t, t) for t in tokens
+        ]
 
-        return tokens
+        return " ".join(tokens_corrigidos)
+
+    # ==================================================
+    # TOKENIZAÇÃO
+    # - Divide o texto em palavras
+    # - Ignora pontuação automaticamente
+    # ==================================================
+    def tokenizar(self, texto):
+        return re.findall(r'\b\w+\b', texto)
+
+    # ==================================================
+    # PIPELINE COMPLETO
+    # Executa todas as etapas de processamento e retorna
+    # múltiplas versões do texto para diferentes usos
+    # ==================================================
+    def processar(self, texto):
+
+        # Texto original (sem alterações)
+        texto_original = texto
+
+        # Texto normalizado (minúsculo + sem acento)
+        texto_normalizado = self.normalizar(texto)
+
+        # Texto corrigido (abreviações ajustadas)
+        texto_corrigido = self.corrigir(texto_normalizado)
+
+        # Lista de palavras (tokens)
+        tokens = self.tokenizar(texto_corrigido)
+
+        # Palavras-chave (filtragem leve)
+        palavras_chave = self.extrair_palavras_chave(tokens)
+
+        # Retorna tudo organizado
+        return {
+            "original": texto_original,
+            "normalizado": texto_normalizado,
+            "corrigido": texto_corrigido,
+            "tokens": tokens,
+            "palavras_chave": palavras_chave
+        }
 
 
-# =========================
-# INSTÂNCIA GLOBAL
-# =========================
-
+# ==================================================
+# INSTÂNCIA GLOBAL DA PIPELINE
+# Pode ser importada em outros módulos da PYXIE
+# ==================================================
 pipeline = LanguagePipeline()
