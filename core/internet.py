@@ -127,14 +127,14 @@ def buscar_wikipedia_opensearch(pergunta_en, headers):
 def buscar_web(pergunta):
 
     headers = {
-        "User-Agent": "PYXIE-AI/1.0"
+        "User-Agent": "PYXIE-AI/3.0"
     }
 
     # =========================
     # PIPELINE
     # =========================
-    tokens = pipeline.processar(pergunta)
-    pergunta = " ".join(tokens)
+    resultado_pipeline = pipeline.processar(pergunta)
+    pergunta = resultado_pipeline["corrigido"]  # ✅ pega a string corrigido 
 
     pergunta_en = traduzir_para_ingles(pergunta)
 

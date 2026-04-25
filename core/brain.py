@@ -104,9 +104,9 @@ class Brain:
         if original_message.startswith("pyxie"):
             original_message = original_message.replace("pyxie", "", 1).strip()
 
-        tokens = self.language.processar(original_message)
-        processed_message = " ".join(tokens)
-
+        resultado = self.language.processar(original_message)
+        processed_message = resultado["corrigido"] 
+        
         self.context.add_message(processed_message)
 
         # 🔥 EXTRAÇÃO DE MEMÓRIA AUTOMÁTICA (ANTES DA RESPOSTA)
@@ -242,7 +242,7 @@ class Brain:
                     pass
             return self.personality.aplicar("Não consegui calcular essa conta.")
 
-        if modulo in ("internet", "pesquisa"):
+        if modulo in ("internet","internet_explicita",  "pesquisa"):
             pergunta = limpar_pergunta(original_message)
 
             if len(pergunta.split()) >= 2:

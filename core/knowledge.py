@@ -25,8 +25,8 @@ def aprender(pergunta, resposta):
     data = carregar_conhecimento()
 
     # aplica pipeline
-    tokens = pipeline.processar(pergunta)
-    pergunta = " ".join(tokens)
+    resultado_pipeline = pipeline.processar(pergunta)
+    pergunta = resultado_pipeline["corrigido"]  # ✅ pega a string
 
     chave = pergunta.lower()
 
@@ -42,9 +42,9 @@ def buscar_conhecimento(pergunta):
     data = carregar_conhecimento()
 
     # aplica pipeline
-    tokens = pipeline.processar(pergunta)
-    pergunta = " ".join(tokens)
-
+    resultado_pipeline = pipeline.processar(pergunta)
+    pergunta = resultado_pipeline["corrigido"] # ✅ pega a string
+    
     pergunta = pergunta.lower()
 
     return data.get(pergunta)
