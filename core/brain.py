@@ -1,3 +1,7 @@
+# =============================================================
+# core/brain.py — Cérebro Central da PYXIE
+# =============================================================
+
 import random
 import unicodedata
 from datetime import datetime
@@ -14,13 +18,17 @@ from core.context import Context
 from core.language_pipeline import LanguagePipeline
 from core.conversation_memory import ConversationMemory
 from core.decision import decidir
+from core.memory_extractor import extrair_e_salvar
+from core.memory_manager import gerar_contexto_para_prompt
+from core.memory.short_term import ShortTermMemory
+from core.memory.session_memory import session_memory
 
 from modules.ollama_ai import perguntar_ollama
 
-# 🔥 NOVOS IMPORTS
-from core.memory_extractor import extrair_e_salvar
-from core.memory_manager import gerar_contexto_para_prompt
 
+# =============================================================
+# FUNÇÕES AUXILIARES
+# =============================================================
 
 def normalizar(texto):
     texto = texto.lower().strip()
@@ -31,7 +39,6 @@ def normalizar(texto):
         texto = texto.replace(c, "")
 
     texto = texto.replace("oque", "o que")
-
     return texto
 
 
@@ -79,37 +86,55 @@ def extrair_pergunta(texto):
     return None
 
 
+# =============================================================
+# BRAIN — CLASSE ÚNICA
+# =============================================================
+
 class Brain:
 
     def __init__(self):
-
-        self.memory = Memory()
-        self.modules = carregar_modulos()  # ✅ CORREÇÃO
+        self.memory      = Memory()
+        self.modules     = carregar_modulos()
         self.personality = Personality()
-        self.context = Context()
-        self.language = LanguagePipeline()
+        self.context     = Context()
+        self.language    = LanguagePipeline()
         self.conv_memory = ConversationMemory(limite=5)
+        self.stm         = ShortTermMemory()
+       
+        session_memory.start_session()
 
     def register_module(self, name, module):
         self.modules[name] = module
 
-    # --------------------------------------------------
+    # ----------------------------------------------------------
     # ENTRY POINT
-    # --------------------------------------------------
+    # ----------------------------------------------------------
 
     def process(self, message):
 
+        # ------------------------------------------------------
+        # STM — verifica expiração
+        # ------------------------------------------------------
+        if self.stm.is_expired():
+            self.stm.clear()
+
+        # ------------------------------------------------------
+        # NORMALIZAÇÃO
+        # ------------------------------------------------------
         original_message = normalizar(message)
 
         if original_message.startswith("pyxie"):
             original_message = original_message.replace("pyxie", "", 1).strip()
 
-        resultado = self.language.processar(original_message)
-        processed_message = resultado["corrigido"] 
-        
+        resultado         = self.language.processar(original_message)
+        processed_message = resultado["corrigido"]
+
+        # ✅ CORREÇÃO AQUI
+        self.stm.add_message("user", processed_message)
+
         self.context.add_message(processed_message)
 
-        # 🔥 EXTRAÇÃO DE MEMÓRIA AUTOMÁTICA (ANTES DA RESPOSTA)
+        # 🔥 EXTRAÇÃO DE MEMÓRIA AUTOMÁTICA
         extrair_e_salvar(message)
 
         # Resolução de pronomes via contexto
@@ -139,7 +164,9 @@ class Brain:
                 if resposta_ia:
                     resposta += " " + resposta_ia
 
-            return self.personality.aplicar(resposta)
+            resposta_final = self.personality.aplicar(resposta)
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         if original_message.startswith("boa tarde"):
             resposta = f"Boa tarde, {obter_usuario()}."
@@ -150,7 +177,9 @@ class Brain:
                 if resposta_ia:
                     resposta += " " + resposta_ia
 
-            return self.personality.aplicar(resposta)
+            resposta_final = self.personality.aplicar(resposta)
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         if original_message.startswith("boa noite"):
             resposta = f"Boa noite, {obter_usuario()}."
@@ -161,18 +190,18 @@ class Brain:
                 if resposta_ia:
                     resposta += " " + resposta_ia
 
-            return self.personality.aplicar(resposta)
+            resposta_final = self.personality.aplicar(resposta)
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
-       # --------------------------------------------------
-       # DECISÃO CENTRAL
-       # --------------------------------------------------
+        # --------------------------------------------------
+        # DECISÃO CENTRAL
+        # --------------------------------------------------
 
-        decisao = decidir(original_message, self.context)
+        decisao   = decidir(original_message, self.context)
         categoria = decisao.get("destino")
-        
-        modulo = categoria
+        modulo    = categoria
 
-        # 🔥 filtra módulos pela categoria (se tiver)
         modulos_candidatos = []
 
         if categoria:
@@ -180,11 +209,9 @@ class Brain:
                 if getattr(m, "category", None) == categoria:
                     modulos_candidatos.append(m)
 
-        # 🔥 fallback: se não achou nenhum, testa todos
         if not modulos_candidatos:
             modulos_candidatos = list(self.modules.values())
 
-        # 🔥 tenta executar módulos
         for modulo_instancia in modulos_candidatos:
             try:
                 if hasattr(modulo_instancia, "handle"):
@@ -195,7 +222,9 @@ class Brain:
                     continue
 
                 if resposta:
-                    return self.personality.aplicar(resposta)
+                    resposta_final = self.personality.aplicar(resposta)
+                    self._finalizar(message, resposta_final)
+                    return resposta_final
 
             except Exception as e:
                 print(f"[ERRO módulo {modulo_instancia.name}]: {e}")
@@ -210,21 +239,28 @@ class Brain:
                 f"Olá, {obter_usuario()}.",
                 f"E aí, {obter_usuario()}."
             ]
-            return self.personality.aplicar(random.choice(respostas))
+            resposta_final = self.personality.aplicar(random.choice(respostas))
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         if modulo == "hora":
             module = self.modules.get("hora")
             if module and hasattr(module, "run"):
                 response = module.run(original_message)
                 if response:
-                    return self.personality.aplicar(response)
+                    resposta_final = self.personality.aplicar(response)
+                    self._finalizar(message, resposta_final)
+                    return resposta_final
 
         if modulo == "identidade":
             if "se apresente" in original_message or "apresente" in original_message:
-                return self.personality.aplicar(apresentar())
-            return self.personality.aplicar(
-                f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
-            )
+                resposta_final = self.personality.aplicar(apresentar())
+            else:
+                resposta_final = self.personality.aplicar(
+                    f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
+                )
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         if modulo == "calculo":
             expression = (
@@ -237,29 +273,37 @@ class Brain:
             if all(c in allowed for c in expression):
                 try:
                     result = eval(expression)
-                    return self.personality.aplicar(f"O resultado é {result}")
+                    resposta_final = self.personality.aplicar(f"O resultado é {result}")
+                    self._finalizar(message, resposta_final)
+                    return resposta_final
                 except Exception:
                     pass
-            return self.personality.aplicar("Não consegui calcular essa conta.")
+            resposta_final = self.personality.aplicar("Não consegui calcular essa conta.")
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
-        if modulo in ("internet","internet_explicita",  "pesquisa"):
+        if modulo in ("internet", "internet_explicita", "pesquisa"):
             pergunta = limpar_pergunta(original_message)
 
             if len(pergunta.split()) >= 2:
                 self.context.set_entity(pergunta)
 
             self.context.update_topic(pergunta)
-            query = melhorar_query(pergunta, self.context)
+            query    = melhorar_query(pergunta, self.context)
             response = buscar_web(query)
 
             if response:
                 aprender(processed_message, response)
                 extrair_e_salvar(message, response, pergunta)
-                return self.personality.aplicar(response)
+                resposta_final = self.personality.aplicar(response)
+                self._finalizar(message, resposta_final)
+                return resposta_final
 
-            return self.personality.aplicar(
+            resposta_final = self.personality.aplicar(
                 "Tive dificuldade para acessar a internet agora."
             )
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         if modulo == "memoria":
             conteudo = (
@@ -268,37 +312,47 @@ class Brain:
                 .replace("lembrar que", "")
                 .strip()
             )
-            palavras = conteudo.split()
+            palavras  = conteudo.split()
             categoria = palavras[0] if palavras else "nota"
             self.memory.remember(categoria, conteudo)
             self.context.update_topic(categoria)
 
             extrair_e_salvar(message)
-            return self.personality.aplicar("Informação salva.")
+            resposta_final = self.personality.aplicar("Informação salva.")
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         # --------------------------------------------------
         # RESPOSTAS FIXAS
         # --------------------------------------------------
 
         if "quem sou eu" in original_message:
-            return self.personality.aplicar(
+            resposta_final = self.personality.aplicar(
                 f"Você é {obter_usuario()}, meu usuário."
             )
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         if "quem e voce" in original_message or "quem e vc" in original_message:
-            return self.personality.aplicar(
+            resposta_final = self.personality.aplicar(
                 f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
             )
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         if "quem te criou" in original_message:
-            return self.personality.aplicar(
+            resposta_final = self.personality.aplicar(
                 f"Eu fui criada por {obter_criador()}."
             )
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         if "qual e o seu proposito" in original_message or "qual seu proposito" in original_message:
-            return self.personality.aplicar(
+            resposta_final = self.personality.aplicar(
                 "Meu propósito é te ajudar, aprender com você e facilitar suas tarefas no dia a dia."
             )
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         # --------------------------------------------------
         # CONHECIMENTO LOCAL
@@ -306,19 +360,31 @@ class Brain:
 
         response = buscar_conhecimento(processed_message)
         if response:
-            return self.personality.aplicar(response)
+            resposta_final = self.personality.aplicar(response)
+            self._finalizar(message, resposta_final)
+            return resposta_final
 
         # --------------------------------------------------
-        # 🔥 FALLBACK FINAL
+        # FALLBACK FINAL — Ollama com contexto completo
         # --------------------------------------------------
 
+        contexto_stm       = self.stm.get_context()          # ← STM agora alimenta o Ollama
         contexto_memoria_db = gerar_contexto_para_prompt(original_message)
-        contexto_conversa = self.conv_memory.gerar_contexto()
-        contexto_extra = self.context.get_entity() or ""
+        contexto_extra      = self.context.get_entity() or ""
+
+        # monta string de contexto histórico para perguntar_ollama
+        contexto_historico = ""
+        for m in contexto_stm:
+            if m["role"] == "system":
+                contexto_historico += m["content"] + "\n\n"
+            elif m["role"] == "user":
+                contexto_historico += f"Usuário: {m['content']}\n"
+            elif m["role"] == "assistant":
+                contexto_historico += f"PYXIE: {m['content']}\n"
 
         contexto_final = (
             contexto_memoria_db + "\n\n" +
-            contexto_conversa + "\n\n" +
+            contexto_historico  + "\n\n" +
             contexto_extra
         )
 
@@ -331,14 +397,35 @@ class Brain:
             resposta_final = self.personality.aplicar(response)
             self.conv_memory.adicionar(message, resposta_final)
             extrair_e_salvar(message, resposta_final, self.context.get_topic())
+            self._finalizar(message, resposta_final)
             return resposta_final
 
-        return self.personality.aplicar("Ainda não encontrei uma resposta para isso.")
+        resposta_final = self.personality.aplicar("Ainda não encontrei uma resposta para isso.")
+        self._finalizar(message, resposta_final)
+        return resposta_final
 
+    # ----------------------------------------------------------
+    # FINALIZAÇÃO — STM + SessionMemory após cada resposta
+    # ----------------------------------------------------------
 
-# =========================
+    def _finalizar(self, user_input: str, resposta: str):
+        """
+        Registra a resposta na STM e na SessionMemory.
+        Chamado em todos os pontos de retorno do process().
+        """
+        self.stm.add_message("assistant", resposta)
+
+        try:
+            session_memory.add_turn(
+                user_input=user_input,
+                pyxie_response=resposta,
+            )
+        except Exception as e:
+            print(f"[WARN] SessionMemory não registrou turno: {e}")
+
+# =============================================================
 # INSTÂNCIA GLOBAL
-# =========================
+# =============================================================
 
 from core.memory_control import MemoryControl
 from modules.hora import Module as HoraModule
