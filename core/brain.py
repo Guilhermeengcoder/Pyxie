@@ -365,13 +365,15 @@ class Brain:
             return resposta_final
 
         # --------------------------------------------------
-        # FALLBACK FINAL — Ollama com contexto completo
-        # --------------------------------------------------
-
-        contexto_stm       = self.stm.get_context()          # ← STM agora alimenta o Ollama
+        # FALLBACK FINAL — Ollama com contexto seletivo
+        # -------------------------------------------------- 
+        # get_context_seletivo() filtra mensagens de baixo peso
+        # e limita o total de caracteres — o prompt não cresce
+        # infinitamente com o decorrer da conversa
+        contexto_stm        = self.stm.get_context_seletivo(max_chars=1200)
         contexto_memoria_db = gerar_contexto_para_prompt(original_message)
         contexto_extra      = self.context.get_entity() or ""
-
+ 
         # monta string de contexto histórico para perguntar_ollama
         contexto_historico = ""
         for m in contexto_stm:
@@ -381,25 +383,25 @@ class Brain:
                 contexto_historico += f"Usuário: {m['content']}\n"
             elif m["role"] == "assistant":
                 contexto_historico += f"PYXIE: {m['content']}\n"
-
+ 
         contexto_final = (
-            contexto_memoria_db + "\n\n" +
-            contexto_historico  + "\n\n" +
-            contexto_extra
-        )
-
+            contexto_memoria_db[:400] + "\n\n" +
+            contexto_historico        + "\n\n" +
+            contexto_extra[:100]
+        ).strip()
+ 
         try:
             response = perguntar_ollama(original_message, contexto_final)
         except Exception:
             response = None
-
+ 
         if response:
             resposta_final = self.personality.aplicar(response)
             self.conv_memory.adicionar(message, resposta_final)
             extrair_e_salvar(message, resposta_final, self.context.get_topic())
             self._finalizar(message, resposta_final)
             return resposta_final
-
+ 
         resposta_final = self.personality.aplicar("Ainda não encontrei uma resposta para isso.")
         self._finalizar(message, resposta_final)
         return resposta_final

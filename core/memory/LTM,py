@@ -1,0 +1,445 @@
+# =============================================================
+# core/ltm.py — Long Term Memory (LTM) da PYXIE
+#
+# Unifica memory_manager.py e memory_extractor.py em um lugar só.
+#
+# Tabelas:
+#   fatos      → informações diretas sobre o usuário, sem expiração
+#   permanente → ativada por "se lembre que", nunca expira
+#   episodica  → conversas relevantes, expira em 7 dias sem acesso
+#
+# Regras:
+#   - Memória comum expira em 7 dias sem ser acessada
+#   - "se lembre que X" salva X permanentemente
+#   - "se esqueça que X" apaga X de qualquer tabela
+#   - Recuperação só injeta no prompt se for relevante para a conversa
+#   - Respostas da própria PYXIE não são salvas como memória
+# =============================================================
+
+import re
+import sqlite3
+import os
+from datetime import datetime, timedelta
+
+
+# =============================================================
+# CONFIG
+# =============================================================
+
+DB_PATH      = "data/pyxie_ltm.db"
+EXPIRACAO_DIAS = 7       # dias sem acesso para episódio expirar
+SCORE_MINIMO   = 2       # score mínimo para salvar um episódio
+MAX_CONTEXTO   = 800     # máximo de caracteres injetados no prompt
+
+
+# =============================================================
+# CONEXÃO
+# =============================================================
+
+def _conectar() -> sqlite3.Connection:
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+# =============================================================
+# INICIALIZAÇÃO
+# =============================================================
+
+def inicializar():
+    conn = _conectar()
+    conn.executescript("""
+        -- Fatos diretos sobre o usuário (sem expiração)
+        CREATE TABLE IF NOT EXISTS fatos (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            chave        TEXT NOT NULL UNIQUE,
+            valor        TEXT NOT NULL,
+            criado_em    TEXT NOT NULL,
+            acessado_em  TEXT NOT NULL
+        );
+
+        -- Memórias permanentes ativadas por "se lembre que"
+        CREATE TABLE IF NOT EXISTS permanente (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            conteudo     TEXT NOT NULL UNIQUE,
+            criado_em    TEXT NOT NULL
+        );
+
+        -- Episódios de conversa (expiram em 7 dias sem acesso)
+        CREATE TABLE IF NOT EXISTS episodica (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            topico       TEXT NOT NULL,
+            conteudo     TEXT NOT NULL,
+            score        INTEGER DEFAULT 0,
+            criado_em    TEXT NOT NULL,
+            acessado_em  TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_fatos_chave
+            ON fatos(chave);
+
+        CREATE INDEX IF NOT EXISTS idx_episodica_score
+            ON episodica(score DESC, acessado_em DESC);
+    """)
+    conn.commit()
+    conn.close()
+
+
+# =============================================================
+# PONTUAÇÃO DE RELEVÂNCIA
+# Determina se uma mensagem vale ser salva como episódio.
+# =============================================================
+
+def _pontuar(msg: str) -> int:
+    msg   = msg.lower()
+    score = 0
+
+    # Fatos pessoais têm alto valor
+    if any(p in msg for p in ["meu", "minha", "eu", "sou", "tenho", "moro", "trabalho"]):
+        score += 2
+
+    # Preferências e opiniões
+    if any(p in msg for p in ["gosto", "prefiro", "odeio", "adoro", "quero"]):
+        score += 2
+
+    # Informações específicas e mensuráveis
+    if re.search(r"\d+", msg):
+        score += 1
+
+    # Projetos e planos
+    if any(p in msg for p in ["projeto", "planejo", "vou", "pretendo", "sonho"]):
+        score += 2
+
+    # Penalidades — coisas que não valem guardar
+    if msg.endswith("?"):
+        score -= 3  # perguntas não são fatos
+
+    if len(msg) < 20:
+        score -= 2  # muito curto para ter valor
+
+    if any(p in msg for p in ["oi", "olá", "ok", "entendi", "obrigado", "tudo bem"]):
+        score -= 3  # saudações e confirmações
+
+    return score
+
+
+# =============================================================
+# DETECÇÃO DE COMANDOS DE MEMÓRIA
+# Retorna ("salvar", conteudo), ("apagar", conteudo) ou None
+# =============================================================
+
+def detectar_comando_memoria(msg: str):
+    msg_lower = msg.lower().strip()
+
+    # Comando para salvar permanentemente
+    for trigger in ["se lembre que", "se lembre disso:", "se lembre:"]:
+        if trigger in msg_lower:
+            conteudo = msg_lower.split(trigger, 1)[-1].strip()
+            if conteudo:
+                return ("salvar", conteudo)
+
+    # Comando para apagar
+    for trigger in ["se esqueça que", "se esqueça disso:", "se esqueça:"]:
+        if trigger in msg_lower:
+            conteudo = msg_lower.split(trigger, 1)[-1].strip()
+            if conteudo:
+                return ("apagar", conteudo)
+
+    return None
+
+
+# =============================================================
+# ESCRITA
+# =============================================================
+
+def salvar_fato(chave: str, valor: str):
+    """Salva um fato direto sobre o usuário. Nunca expira."""
+    agora = datetime.now().isoformat()
+    conn  = _conectar()
+    conn.execute("""
+        INSERT INTO fatos (chave, valor, criado_em, acessado_em)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(chave) DO UPDATE SET
+            valor       = excluded.valor,
+            acessado_em = excluded.acessado_em
+    """, (chave.lower().strip(), valor.strip(), agora, agora))
+    conn.commit()
+    conn.close()
+
+
+def salvar_permanente(conteudo: str) -> bool:
+    """
+    Salva memória permanente ativada por 'se lembre que'.
+    Retorna True se salvou, False se já existia.
+    """
+    agora = datetime.now().isoformat()
+    conn  = _conectar()
+
+    existente = conn.execute(
+        "SELECT 1 FROM permanente WHERE conteudo = ?", (conteudo,)
+    ).fetchone()
+
+    if existente:
+        conn.close()
+        return False
+
+    conn.execute(
+        "INSERT INTO permanente (conteudo, criado_em) VALUES (?, ?)",
+        (conteudo.strip(), agora)
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def salvar_episodio(topico: str, conteudo: str):
+    """
+    Salva episódio de conversa se tiver score suficiente.
+    Ignora duplicatas e conteúdo de baixo valor.
+    """
+    score = _pontuar(conteudo)
+    if score < SCORE_MINIMO:
+        return
+
+    agora = datetime.now().isoformat()
+    conn  = _conectar()
+
+    # Evita duplicatas
+    existente = conn.execute(
+        "SELECT 1 FROM episodica WHERE conteudo = ?", (conteudo,)
+    ).fetchone()
+
+    if not existente:
+        conn.execute("""
+            INSERT INTO episodica (topico, conteudo, score, criado_em, acessado_em)
+            VALUES (?, ?, ?, ?, ?)
+        """, (topico.strip(), conteudo.strip()[:300], score, agora, agora))
+        conn.commit()
+
+    conn.close()
+
+
+def apagar_memoria(conteudo: str) -> bool:
+    """
+    Apaga memória de qualquer tabela que contenha o conteúdo.
+    Retorna True se apagou algo.
+    """
+    termo = f"%{conteudo.lower()}%"
+    conn  = _conectar()
+    apagou = False
+
+    for tabela in ["permanente", "episodica", "fatos"]:
+        cursor = conn.execute(
+            f"DELETE FROM {tabela} WHERE lower(conteudo) LIKE ?" 
+            if tabela != "fatos" else
+            f"DELETE FROM {tabela} WHERE lower(valor) LIKE ?",
+            (termo,)
+        )
+        if cursor.rowcount > 0:
+            apagou = True
+
+    conn.commit()
+    conn.close()
+    return apagou
+
+
+# =============================================================
+# EXTRAÇÃO AUTOMÁTICA DE FATOS
+# Analisa mensagens do usuário e extrai fatos estruturados.
+# NUNCA processa respostas da PYXIE — só input do usuário.
+# =============================================================
+
+_PADROES_FATOS = [
+    (r"meu nome [eé] ([a-záàâãéèêíïóôõöúçñ\s]+)",          "nome"),
+    (r"pode me chamar de ([a-záàâãéèêíïóôõöúçñ\s]+)",        "nome"),
+    (r"tenho (\d{1,3}) anos",                                 "idade"),
+    (r"trabalho como ([a-záàâãéèêíïóôõöúçñ\s]+)",            "profissao"),
+    (r"(?:moro em|sou de|vivo em) ([a-záàâãéèêíïóôõöúçñ\s]+)", "cidade"),
+    (r"(?:gosto de|adoro|prefiro) ([a-záàâãéèêíïóôõöúçñ\s,]+)", "preferencia"),
+    (r"(?:não gosto de|detesto|odeio) ([a-záàâãéèêíïóôõöúçñ\s,]+)", "nao_gosta"),
+    (r"(?:estudo|curso) ([a-záàâãéèêíïóôõöúçñ\s]+)",         "curso"),
+]
+
+_FRASES_BLOQUEADAS = [
+    "o que voce", "voce lembra", "me diga", "me fala",
+    "me explique", "voce sabe", "se lembre", "se esqueça"
+]
+
+
+def extrair_e_salvar(mensagem_usuario: str, topico: str = None):
+    """
+    Extrai fatos e episódios da mensagem do USUÁRIO.
+    Nunca chamar com respostas da PYXIE.
+    """
+    msg = mensagem_usuario.lower().strip()
+
+    # Ignora perguntas
+    if msg.endswith("?"):
+        return
+
+    # Ignora frases que não são declarações
+    if any(f in msg for f in _FRASES_BLOQUEADAS):
+        return
+
+    # Extrai fatos estruturados
+    for padrao, chave in _PADROES_FATOS:
+        match = re.search(padrao, msg)
+        if match:
+            valor = match.group(1).strip().rstrip(".,!?")
+            if len(valor) >= 2:
+                salvar_fato(chave, valor)
+
+    # Salva como episódio se tiver tópico e score suficiente
+    if topico and len(topico) > 3:
+        salvar_episodio(topico, mensagem_usuario[:300])
+
+
+# =============================================================
+# RECUPERAÇÃO INTELIGENTE
+# Só retorna memórias relevantes para a mensagem atual.
+# =============================================================
+
+def _atualizar_acesso(tabela: str, ids: list):
+    """Atualiza acessado_em para resetar o timer de expiração."""
+    if not ids or tabela == "permanente":
+        return
+    agora = datetime.now().isoformat()
+    conn  = _conectar()
+    placeholders = ",".join("?" * len(ids))
+    conn.execute(
+        f"UPDATE {tabela} SET acessado_em = ? WHERE id IN ({placeholders})",
+        [agora] + ids
+    )
+    conn.commit()
+    conn.close()
+
+
+def buscar_relevantes(mensagem: str) -> dict:
+    """
+    Busca memórias relevantes para a mensagem atual.
+    Retorna dict com fatos, permanente e episodios relevantes.
+    """
+    palavras = [p for p in mensagem.lower().split() if len(p) > 3]
+    conn     = _conectar()
+    resultado = {"fatos": {}, "permanente": [], "episodios": []}
+
+    # Sempre carrega fatos (são poucos e sempre relevantes)
+    rows = conn.execute(
+        "SELECT id, chave, valor FROM fatos ORDER BY acessado_em DESC"
+    ).fetchall()
+    ids_fatos = []
+    for r in rows:
+        resultado["fatos"][r["chave"]] = r["valor"]
+        ids_fatos.append(r["id"])
+
+    # Sempre carrega permanentes (são memórias críticas)
+    rows = conn.execute(
+        "SELECT conteudo FROM permanente ORDER BY criado_em DESC LIMIT 10"
+    ).fetchall()
+    resultado["permanente"] = [r["conteudo"] for r in rows]
+
+    # Episódios: só os relevantes para a mensagem atual
+    ids_episodios = []
+    vistos        = set()
+
+    for palavra in palavras[:4]:
+        rows = conn.execute("""
+            SELECT id, topico, conteudo FROM episodica
+            WHERE lower(conteudo) LIKE ? OR lower(topico) LIKE ?
+            ORDER BY score DESC, acessado_em DESC
+            LIMIT 3
+        """, (f"%{palavra}%", f"%{palavra}%")).fetchall()
+
+        for r in rows:
+            chave = r["conteudo"][:60]
+            if chave not in vistos:
+                vistos.add(chave)
+                resultado["episodios"].append(r["conteudo"])
+                ids_episodios.append(r["id"])
+
+    conn.close()
+
+    # Atualiza timestamp de acesso (reseta timer de expiração)
+    _atualizar_acesso("fatos", ids_fatos)
+    _atualizar_acesso("episodica", ids_episodios)
+
+    return resultado
+
+
+# =============================================================
+# GERAÇÃO DE CONTEXTO PARA O PROMPT
+# Injeta só o que é relevante, respeitando MAX_CONTEXTO chars.
+# =============================================================
+
+def gerar_contexto_para_prompt(mensagem: str) -> str:
+    """
+    Gera bloco de contexto para injetar no prompt do Ollama.
+    Silencioso — a PYXIE usa sem precisar avisar que lembrou.
+    """
+    memoria   = buscar_relevantes(mensagem)
+    partes    = []
+    total     = 0
+
+    # Fatos diretos (mais importantes)
+    if memoria["fatos"]:
+        linhas = [f"- {k}: {v}" for k, v in memoria["fatos"].items()]
+        bloco  = "Fatos sobre o usuário:\n" + "\n".join(linhas)
+        if total + len(bloco) <= MAX_CONTEXTO:
+            partes.append(bloco)
+            total += len(bloco)
+
+    # Memórias permanentes
+    if memoria["permanente"]:
+        bloco = "Lembre sempre:\n" + "\n".join(f"- {p}" for p in memoria["permanente"])
+        if total + len(bloco) <= MAX_CONTEXTO:
+            partes.append(bloco)
+            total += len(bloco)
+
+    # Episódios relevantes
+    if memoria["episodios"]:
+        bloco = "Contexto relevante:\n" + "\n".join(
+            f"- {e[:100]}" for e in memoria["episodios"][:3]
+        )
+        if total + len(bloco) <= MAX_CONTEXTO:
+            partes.append(bloco)
+            total += len(bloco)
+
+    if not partes:
+        return ""
+
+    return "=== Memória ===\n" + "\n\n".join(partes) + "\n==============="
+
+
+# =============================================================
+# ESQUECIMENTO AUTOMÁTICO
+# Remove episódios não acessados há mais de 7 dias.
+# =============================================================
+
+def limpar_expirados():
+    """
+    Remove episódios não acessados há mais de EXPIRACAO_DIAS dias.
+    Fatos e permanentes nunca são removidos automaticamente.
+    """
+    limite = (datetime.now() - timedelta(days=EXPIRACAO_DIAS)).isoformat()
+    conn   = _conectar()
+
+    cursor = conn.execute(
+        "DELETE FROM episodica WHERE acessado_em < ?", (limite,)
+    )
+    removidos = cursor.rowcount
+
+    conn.commit()
+    conn.close()
+
+    if removidos:
+        print(f"[LTM] {removidos} episódio(s) expirado(s) removido(s).")
+
+
+# =============================================================
+# INICIALIZA AO IMPORTAR
+# =============================================================
+
+inicializar()
+limpar_expirados()
