@@ -1,7 +1,6 @@
-from core.memory_manager import (
-    buscar_todos_fatos,
-    buscar_episodios_recentes,
-    buscar_explicitas
+from core.memory.LTM import (
+    buscar_relevantes,
+    apagar_memoria,
 )
 
 
@@ -12,14 +11,17 @@ class MemoryControl:
         msg = message.lower()
 
         # =========================
-        # LISTAR MEMÓRIA (NATURAL)
+        # LISTAR MEMÓRIA
         # =========================
         if "o que voce lembra" in msg or "o que você lembra" in msg:
 
-            fatos = buscar_todos_fatos()
-            episodios = buscar_episodios_recentes(3)
+            memoria = buscar_relevantes(message)
 
-            if not fatos and not episodios:
+            fatos    = memoria.get("fatos", {})
+            perma    = memoria.get("permanente", [])
+            episodios = memoria.get("episodios", [])
+
+            if not fatos and not perma and not episodios:
                 return "Ainda não tenho muitas informações sobre você."
 
             partes = []
@@ -29,10 +31,15 @@ class MemoryControl:
                 for k, v in fatos.items():
                     partes.append(f"- Seu {k} é {v}")
 
+            if perma:
+                partes.append("\nCoisas que você me pediu para lembrar:")
+                for p in perma:
+                    partes.append(f"- {p}")
+
             if episodios:
-                partes.append("\nTambém lembro de coisas que você comentou recentemente:")
+                partes.append("\nCoisas que você comentou recentemente:")
                 for e in episodios:
-                    partes.append(f"- {e['resumo']}")
+                    partes.append(f"- {e[:100]}")
 
             return "\n".join(partes)
 
@@ -43,7 +50,12 @@ class MemoryControl:
 
             termo = msg.replace("esqueca", "").replace("esqueça", "").strip()
 
-            # aqui você pode evoluir depois pra DELETE real no banco
-            return f"Ainda não sei apagar memórias específicas, mas estou evoluindo nisso 😉"
+            if not termo:
+                return "O que você quer que eu esqueça?"
+
+            apagou = apagar_memoria(termo)
+            if apagou:
+                return "Pronto, não lembro mais disso."
+            return "Não encontrei nada relacionado a isso na minha memória."
 
         return None

@@ -8,7 +8,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from core.module_loader import carregar_modulos
-from core.memory import Memory
 from core.identity import obter_nome, obter_criador, obter_usuario, apresentar
 from core.personality import Personality
 from core.internet import buscar_web
@@ -16,12 +15,18 @@ from core.knowledge import buscar_conhecimento, aprender
 from core.reminder import adicionar, listar
 from core.context import Context
 from core.language_pipeline import LanguagePipeline
-from core.conversation_memory import ConversationMemory
 from core.decision import decidir
-from core.memory_extractor import extrair_e_salvar
-from core.memory_manager import gerar_contexto_para_prompt
 from core.memory.short_term import ShortTermMemory
 from core.memory.session_memory import session_memory
+
+# LTM unificado — substitui memory_manager, memory_extractor e legacy_memory
+from core.memory.LTM import (
+    extrair_e_salvar,
+    gerar_contexto_para_prompt,
+    salvar_permanente,
+    apagar_memoria,
+    detectar_comando_memoria,
+)
 
 from modules.ollama_ai import perguntar_ollama
 
@@ -56,26 +61,8 @@ def limpar_pergunta(pergunta):
 
 def melhorar_query(pergunta, context):
     entity = context.get_entity()
-
-    if "idade" in pergunta or "quantos anos" in pergunta:
-        if entity:
-            return f"{entity} idade"
-
-    if "quando nasceu" in pergunta:
-        if entity:
-            return f"{entity} data de nascimento"
-
-    if "onde nasceu" in pergunta:
-        if entity:
-            return f"{entity} local de nascimento"
-
-    if "quando foi criado" in pergunta:
-        if entity:
-            return f"{entity} historia criacao"
-
     if entity and len(pergunta.split()) <= 3:
         return f"{entity} {pergunta}"
-
     return pergunta
 
 
@@ -93,14 +80,12 @@ def extrair_pergunta(texto):
 class Brain:
 
     def __init__(self):
-        self.memory      = Memory()
         self.modules     = carregar_modulos()
         self.personality = Personality()
         self.context     = Context()
         self.language    = LanguagePipeline()
-        self.conv_memory = ConversationMemory(limite=5)
         self.stm         = ShortTermMemory()
-       
+
         session_memory.start_session()
 
     def register_module(self, name, module):
@@ -129,12 +114,30 @@ class Brain:
         resultado         = self.language.processar(original_message)
         processed_message = resultado["corrigido"]
 
-        # ✅ CORREÇÃO AQUI
         self.stm.add_message("user", processed_message)
-
         self.context.add_message(processed_message)
 
-        # 🔥 EXTRAÇÃO DE MEMÓRIA AUTOMÁTICA
+        # ------------------------------------------------------
+        # COMANDO DE MEMÓRIA EXPLÍCITA ("se lembre que X")
+        # ------------------------------------------------------
+        comando_mem = detectar_comando_memoria(message)
+        if comando_mem:
+            acao, conteudo = comando_mem
+            if acao == "salvar":
+                salvar_permanente(conteudo)
+                resposta_final = self.personality.aplicar("Anotado. Vou lembrar disso.")
+                self._finalizar(message, resposta_final)
+                return resposta_final
+            elif acao == "apagar":
+                apagou = apagar_memoria(conteudo)
+                msg = "Memória apagada." if apagou else "Não encontrei nada para apagar."
+                resposta_final = self.personality.aplicar(msg)
+                self._finalizar(message, resposta_final)
+                return resposta_final
+
+        # ------------------------------------------------------
+        # EXTRAÇÃO AUTOMÁTICA DE FATOS DO USUÁRIO
+        # ------------------------------------------------------
         extrair_e_salvar(message)
 
         # Resolução de pronomes via contexto
@@ -294,7 +297,7 @@ class Brain:
 
             if response:
                 aprender(processed_message, response)
-                extrair_e_salvar(message, response, pergunta)
+                extrair_e_salvar(message, topico=pergunta)
                 resposta_final = self.personality.aplicar(response)
                 self._finalizar(message, resposta_final)
                 return resposta_final
@@ -312,12 +315,9 @@ class Brain:
                 .replace("lembrar que", "")
                 .strip()
             )
-            palavras  = conteudo.split()
-            categoria = palavras[0] if palavras else "nota"
-            self.memory.remember(categoria, conteudo)
-            self.context.update_topic(categoria)
+            salvar_permanente(conteudo)
+            self.context.update_topic(conteudo.split()[0] if conteudo else "nota")
 
-            extrair_e_salvar(message)
             resposta_final = self.personality.aplicar("Informação salva.")
             self._finalizar(message, resposta_final)
             return resposta_final
@@ -366,15 +366,11 @@ class Brain:
 
         # --------------------------------------------------
         # FALLBACK FINAL — Ollama com contexto seletivo
-        # -------------------------------------------------- 
-        # get_context_seletivo() filtra mensagens de baixo peso
-        # e limita o total de caracteres — o prompt não cresce
-        # infinitamente com o decorrer da conversa
+        # --------------------------------------------------
         contexto_stm        = self.stm.get_context_seletivo(max_chars=1200)
         contexto_memoria_db = gerar_contexto_para_prompt(original_message)
         contexto_extra      = self.context.get_entity() or ""
- 
-        # monta string de contexto histórico para perguntar_ollama
+
         contexto_historico = ""
         for m in contexto_stm:
             if m["role"] == "system":
@@ -383,25 +379,24 @@ class Brain:
                 contexto_historico += f"Usuário: {m['content']}\n"
             elif m["role"] == "assistant":
                 contexto_historico += f"PYXIE: {m['content']}\n"
- 
+
         contexto_final = (
             contexto_memoria_db[:400] + "\n\n" +
             contexto_historico        + "\n\n" +
             contexto_extra[:100]
         ).strip()
- 
+
         try:
             response = perguntar_ollama(original_message, contexto_final)
         except Exception:
             response = None
- 
+
         if response:
             resposta_final = self.personality.aplicar(response)
-            self.conv_memory.adicionar(message, resposta_final)
-            extrair_e_salvar(message, resposta_final, self.context.get_topic())
+            extrair_e_salvar(message, topico=self.context.get_topic())
             self._finalizar(message, resposta_final)
             return resposta_final
- 
+
         resposta_final = self.personality.aplicar("Ainda não encontrei uma resposta para isso.")
         self._finalizar(message, resposta_final)
         return resposta_final
@@ -411,10 +406,6 @@ class Brain:
     # ----------------------------------------------------------
 
     def _finalizar(self, user_input: str, resposta: str):
-        """
-        Registra a resposta na STM e na SessionMemory.
-        Chamado em todos os pontos de retorno do process().
-        """
         self.stm.add_message("assistant", resposta)
 
         try:
@@ -424,6 +415,7 @@ class Brain:
             )
         except Exception as e:
             print(f"[WARN] SessionMemory não registrou turno: {e}")
+
 
 # =============================================================
 # INSTÂNCIA GLOBAL
