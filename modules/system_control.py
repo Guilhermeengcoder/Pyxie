@@ -1,7 +1,3 @@
-import keyboard
-import screen_brightness_control as sbc
-
-
 class Module:
 
     name = "system_control"
@@ -43,6 +39,12 @@ class Module:
     def _executar(self, comando):
 
         try:
+            import keyboard
+            import screen_brightness_control as sbc
+        except ImportError as e:
+            return f"Módulo de controle de sistema não disponível neste ambiente: {e}"
+
+        try:
 
             if comando == "volume_up":
                 keyboard.send("volume up")
@@ -59,22 +61,17 @@ class Module:
             elif comando == "brightness_up":
                 atual = sbc.get_brightness()[0]
                 novo = min(atual + 10, 100)
-
                 sbc.set_brightness(novo)
-
                 return f"Brilho aumentado para {novo}%."
 
             elif comando == "brightness_down":
                 atual = sbc.get_brightness()[0]
                 novo = max(atual - 10, 0)
-
                 sbc.set_brightness(novo)
-
                 return f"Brilho reduzido para {novo}%."
 
             elif comando == "brightness_status":
                 atual = sbc.get_brightness()[0]
-
                 return f"O brilho atual está em {atual}%."
 
         except Exception as e:

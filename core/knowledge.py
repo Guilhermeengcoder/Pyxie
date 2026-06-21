@@ -3,10 +3,15 @@ import os
 from core.language_pipeline import pipeline
 
 ARQUIVO_KNOWLEDGE = "data/knowledge.json"
+MAX_ENTRADAS = 500
+
+
+def _normalizar_chave(pergunta: str) -> str:
+    resultado = pipeline.processar(pergunta)
+    return resultado["corrigido"].lower()
 
 
 def carregar_conhecimento():
-
     if not os.path.exists(ARQUIVO_KNOWLEDGE):
         with open(ARQUIVO_KNOWLEDGE, "w") as f:
             json.dump({}, f)
@@ -17,34 +22,26 @@ def carregar_conhecimento():
 
 def salvar_conhecimento(data):
     with open(ARQUIVO_KNOWLEDGE, "w") as f:
-        json.dump(data, f, indent=4)
+        json.dump(data, f, indent=4, ensure_ascii=False)
 
 
 def aprender(pergunta, resposta):
+    if len(resposta) <= 20:
+        return
 
     data = carregar_conhecimento()
 
-    # aplica pipeline
-    resultado_pipeline = pipeline.processar(pergunta)
-    pergunta = resultado_pipeline["corrigido"]  # ✅ pega a string
+    if len(data) >= MAX_ENTRADAS:
+        chave_mais_antiga = next(iter(data))
+        del data[chave_mais_antiga]
 
-    chave = pergunta.lower()
-
-    # Só aprende se resposta for relevante
-    if len(resposta) > 20:
-        data[chave] = resposta
+    chave = _normalizar_chave(pergunta)
+    data[chave] = resposta
 
     salvar_conhecimento(data)
 
 
 def buscar_conhecimento(pergunta):
-
     data = carregar_conhecimento()
-
-    # aplica pipeline
-    resultado_pipeline = pipeline.processar(pergunta)
-    pergunta = resultado_pipeline["corrigido"] # ✅ pega a string
-    
-    pergunta = pergunta.lower()
-
-    return data.get(pergunta)
+    chave = _normalizar_chave(pergunta)
+    return data.get(chave)

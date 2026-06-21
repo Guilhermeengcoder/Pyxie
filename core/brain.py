@@ -2,6 +2,7 @@
 # core/brain.py — Cérebro Central da PYXIE
 # =============================================================
 
+import ast
 import random
 import unicodedata
 from datetime import datetime
@@ -26,6 +27,7 @@ from core.memory.LTM import (
     salvar_permanente,
     apagar_memoria,
     detectar_comando_memoria,
+    limpar_expirados,
 )
 
 from modules.ollama_ai import perguntar_ollama
@@ -73,6 +75,34 @@ def extrair_pergunta(texto):
     return None
 
 
+def calcular_seguro(expression: str):
+    """
+    Avalia expressões matemáticas simples sem usar eval().
+    Suporta: + - * / ** () e números decimais.
+    Lança ValueError se a expressão contiver algo não permitido.
+    """
+    try:
+        tree = ast.parse(expression, mode='eval')
+    except SyntaxError:
+        raise ValueError("Expressão inválida.")
+
+    NODES_PERMITIDOS = (
+        ast.Expression,
+        ast.BinOp,
+        ast.UnaryOp,
+        ast.Constant,
+        ast.Add, ast.Sub, ast.Mult, ast.Div,
+        ast.FloorDiv, ast.Mod, ast.Pow,
+        ast.USub, ast.UAdd,
+    )
+
+    for node in ast.walk(tree):
+        if not isinstance(node, NODES_PERMITIDOS):
+            raise ValueError(f"Operação não permitida: {type(node).__name__}")
+
+    return eval(compile(tree, "<string>", "eval"))
+
+
 # =============================================================
 # BRAIN — CLASSE ÚNICA
 # =============================================================
@@ -87,6 +117,7 @@ class Brain:
         self.stm         = ShortTermMemory()
 
         session_memory.start_session()
+        limpar_expirados()
 
     def register_module(self, name, module):
         self.modules[name] = module
@@ -117,15 +148,9 @@ class Brain:
 
     def _processar_unica(self, message):
 
-        # ------------------------------------------------------
-        # STM — verifica expiração
-        # ------------------------------------------------------
         if self.stm.is_expired():
             self.stm.clear()
 
-        # ------------------------------------------------------
-        # NORMALIZAÇÃO
-        # ------------------------------------------------------
         original_message = normalizar(message)
 
         if original_message.startswith("pyxie"):
@@ -160,7 +185,6 @@ class Brain:
         # ------------------------------------------------------
         extrair_e_salvar(message)
 
-        # Resolução de pronomes via contexto
         entity = self.context.get_entity() or self.context.get_topic()
 
         if entity:
@@ -292,15 +316,14 @@ class Brain:
                 .replace("quanto e", "")
                 .strip()
             )
-            allowed = "0123456789+-*/(). "
-            if all(c in allowed for c in expression):
-                try:
-                    result = eval(expression)
-                    resposta_final = self.personality.aplicar(f"O resultado é {result}")
-                    self._finalizar(message, resposta_final)
-                    return resposta_final
-                except Exception:
-                    pass
+            try:
+                result = calcular_seguro(expression)
+                resposta_final = self.personality.aplicar(f"O resultado é {result}")
+                self._finalizar(message, resposta_final)
+                return resposta_final
+            except (ValueError, ZeroDivisionError):
+                pass
+
             resposta_final = self.personality.aplicar("Não consegui calcular essa conta.")
             self._finalizar(message, resposta_final)
             return resposta_final
@@ -442,10 +465,6 @@ class Brain:
 # =============================================================
 
 from core.memory_control import MemoryControl
-from modules.hora import Module as HoraModule
-from modules.system_control import Module as SystemControlModule
 
 brain = Brain()
 brain.register_module("memory_control", MemoryControl())
-brain.register_module("hora", HoraModule())
-brain.register_module("system_control", SystemControlModule())

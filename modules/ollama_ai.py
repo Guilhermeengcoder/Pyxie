@@ -5,7 +5,7 @@ import requests
 # ================================================================
 
 OLLAMA_URL       = "http://localhost:11434/api/generate"
-OLLAMA_MODEL     = "llama3.2:3b" #Alternar entre os modelos (llama3) mais potente (llama3.2:3b) mais fraco
+OLLAMA_MODEL     = "llama3" #Alternar entre os modelos (llama3) mais potente (llama3.2:3b) mais fraco
 TIMEOUT          = 180           # 3 min — llama3 8B em CPU pura pode precisar
 MAX_MEMORY_CHARS = 1000
 
