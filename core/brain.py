@@ -7,6 +7,7 @@ import unicodedata
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from core.multi_task import dividir_tarefas, tem_multiplas_tarefas
 from core.module_loader import carregar_modulos
 from core.identity import obter_nome, obter_criador, obter_usuario, apresentar
 from core.personality import Personality
@@ -19,7 +20,6 @@ from core.decision import decidir
 from core.memory.short_term import ShortTermMemory
 from core.memory.session_memory import session_memory
 
-# LTM unificado — substitui memory_manager, memory_extractor e legacy_memory
 from core.memory.LTM import (
     extrair_e_salvar,
     gerar_contexto_para_prompt,
@@ -92,10 +92,30 @@ class Brain:
         self.modules[name] = module
 
     # ----------------------------------------------------------
-    # ENTRY POINT
+    # ENTRY POINT — lida com múltiplas tarefas
     # ----------------------------------------------------------
 
     def process(self, message):
+
+        if tem_multiplas_tarefas(message):
+            tarefas = dividir_tarefas(message)
+            respostas = []
+
+            for tarefa in tarefas:
+                resp = self._processar_unica(tarefa)
+                if resp:
+                    respostas.append(resp)
+
+            if respostas:
+                return "\n".join(respostas)
+
+        return self._processar_unica(message)
+
+    # ----------------------------------------------------------
+    # PROCESSAMENTO DE UMA ÚNICA TAREFA
+    # ----------------------------------------------------------
+
+    def _processar_unica(self, message):
 
         # ------------------------------------------------------
         # STM — verifica expiração
@@ -423,7 +443,9 @@ class Brain:
 
 from core.memory_control import MemoryControl
 from modules.hora import Module as HoraModule
+from modules.system_control import Module as SystemControlModule
 
 brain = Brain()
 brain.register_module("memory_control", MemoryControl())
 brain.register_module("hora", HoraModule())
+brain.register_module("system_control", SystemControlModule())
