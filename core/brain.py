@@ -19,7 +19,7 @@ from core.context import Context
 from core.language_pipeline import LanguagePipeline
 from core.decision import decidir
 from core.memory.short_term import ShortTermMemory
-from core.memory.session_memory import session_memory
+
 
 from core.memory.LTM import (
     extrair_e_salvar,
@@ -116,7 +116,6 @@ class Brain:
         self.language    = LanguagePipeline()
         self.stm         = ShortTermMemory()
 
-        session_memory.start_session()
         limpar_expirados()
 
     def register_module(self, name, module):
@@ -445,20 +444,11 @@ class Brain:
         return resposta_final
 
     # ----------------------------------------------------------
-    # FINALIZAÇÃO — STM + SessionMemory após cada resposta
+    # FINALIZAÇÃO — STM 
     # ----------------------------------------------------------
 
     def _finalizar(self, user_input: str, resposta: str):
         self.stm.add_message("assistant", resposta)
-
-        try:
-            session_memory.add_turn(
-                user_input=user_input,
-                pyxie_response=resposta,
-            )
-        except Exception as e:
-            print(f"[WARN] SessionMemory não registrou turno: {e}")
-
 
 # =============================================================
 # INSTÂNCIA GLOBAL

@@ -1,18 +1,8 @@
-# =============================================================
-# core/decision.py — Roteador Central da PYXIE v2.1
-# Melhorias:
-# - Redução de falsos positivos (web)
-# - Suporte a contexto
-# - Base para sistema de confiança
-# =============================================================
-
 import re
 import unicodedata
 
+PREFIXO = "pyxie,"
 
-# =============================================================
-# NORMALIZAÇÃO
-# =============================================================
 
 def normalizar(texto: str) -> str:
     texto = texto.lower().strip()
@@ -23,53 +13,59 @@ def normalizar(texto: str) -> str:
     return texto
 
 
-# =============================================================
-# CHECAGENS
-# =============================================================
+def _tem_prefixo(msg: str) -> tuple[bool, str]:
+    """Retorna (tem_prefixo, msg_sem_prefixo)."""
+    normalizado = msg.lower().strip()
+    if normalizado.startswith(PREFIXO):
+        return True, normalizado[len(PREFIXO):].strip()
+    return False, normalizado
+
 
 def _checar_hora(msg: str):
+    tem, conteudo = _tem_prefixo(msg)
+    if not tem:
+        return 0.0
+
     padroes_hora = [
-        r"^que horas (sao|são|e|é)$",
-        r"^qual (a hora|o horario|o dia|a data)( atual)?$",
-        r"^(que dia|que data) (e|é) hoje$",
-        r"^hoje e (segunda|terca|quarta|quinta|sexta|sabado|domingo)",
-        r"^(me diz|me diga|fala) (a hora|as horas|que horas|que dia)$",
-        r"^qual e a data de hoje$",
+        r"que horas (sao|são|e|é)",
+        r"qual (a hora|o horario|o dia|a data)( atual)?",
+        r"que (dia|data) (e|é) hoje",
+        r"qual e a data de hoje",
+        r"(me diz|me diga|fala) (a hora|as horas|que horas|que dia)",
     ]
 
     for padrao in padroes_hora:
-        if re.search(padrao, msg):
+        if re.search(padrao, conteudo):
             return 1.0
 
-    palavras = msg.split()
+    palavras = conteudo.split()
     if len(palavras) <= 3:
-        if "hora" in palavras or "horas" in palavras:
-            return 0.8
-        if "dia" in palavras and "hoje" in palavras:
+        if any(p in palavras for p in ["hora", "horas", "dia", "data"]):
             return 0.8
 
     return 0.0
 
 
 def _checar_saudacao(msg: str):
+    # saudações continuam sem precisar de prefixo
     saudacoes_exatas = {
         "oi", "ola", "opa", "eai", "e ai",
         "fala", "salve", "oi tudo bem", "ola tudo bem"
     }
-
     cumprimentos_inicio = ["bom dia", "boa tarde", "boa noite"]
 
-    if msg in saudacoes_exatas:
+    msg_norm = normalizar(msg)
+
+    if msg_norm in saudacoes_exatas:
         return 1.0
 
     for c in cumprimentos_inicio:
-        if msg.startswith(c):
+        if msg_norm.startswith(c):
             return 0.9
 
-    palavras = msg.split()
-    if palavras:
-        if palavras[0] in {"salve", "oi", "ola", "eai", "fala"} and len(palavras) <= 6:
-            return 0.7
+    palavras = msg_norm.split()
+    if palavras and palavras[0] in {"salve", "oi", "ola", "eai", "fala"} and len(palavras) <= 6:
+        return 0.7
 
     return 0.0
 
@@ -80,60 +76,53 @@ def _checar_identidade(msg: str):
         "se apresente", "quem te criou",
         "voce e uma ia", "voce e um robo"
     ]
-
+    msg_norm = normalizar(msg)
     for p in padroes:
-        if p in msg:
+        if p in msg_norm:
             return 1.0
-
     return 0.0
 
 
 def _checar_calculo(msg: str):
+    msg_norm = normalizar(msg)
     padroes = [
         r"calcul[ae]",
         r"quanto e \d",
         r"resultado de",
         r"\d+\s*[\+\-\*\/]\s*\d+",
     ]
-
     for p in padroes:
-        if re.search(p, msg):
+        if re.search(p, msg_norm):
             return 1.0
-
     return 0.0
 
 
 def _checar_memoria(msg: str):
+    msg_norm = normalizar(msg)
     triggers = [
         "lembre que", "guarde que", "memorize que",
         "anota que", "liste memorias",
         "o que voce lembra", "esqueca"
     ]
-
     for t in triggers:
-        if t in msg:
+        if t in msg_norm:
             return 1.0
-
     return 0.0
 
 
 def _checar_pesquisa_explicita(msg: str):
+    msg_norm = normalizar(msg)
     inicios = [
         "pesquise", "procure", "busque",
         "pesquise sobre", "procure sobre"
     ]
-
-    if any(msg.startswith(i) for i in inicios):
+    if any(msg_norm.startswith(i) for i in inicios):
         return 1.0
-
     return 0.0
 
 
 def _checar_pergunta_web(msg: str):
-    """
-    Agora só ativa se COMEÇAR com padrão — evita falso positivo
-    """
-
+    msg_norm = normalizar(msg)
     inicios = [
         "quem foi", "quem e",
         "o que e", "o que foi",
@@ -143,86 +132,77 @@ def _checar_pergunta_web(msg: str):
         "quanto tempo durou",
         "em que ano"
     ]
-
-    if any(msg.startswith(i) for i in inicios):
+    if any(msg_norm.startswith(i) for i in inicios):
         return 0.9
-
     return 0.0
 
 
 def _checar_lembrete(msg: str):
-    if re.search(r"(lembra|lembre|avisa).*(as|às)\s*\d{1,2}", msg):
+    msg_norm = normalizar(msg)
+    if re.search(r"(lembra|lembre|avisa).*(as|às)\s*\d{1,2}", msg_norm):
         return 1.0
-    if "lembrete" in msg:
+    if "lembrete" in msg_norm:
         return 0.8
     return 0.0
 
 
 def _checar_launcher(msg: str):
+    msg_norm = normalizar(msg)
     triggers = [
         "abre", "abra", "abrir",
         "inicia", "inicie",
         "abre o chrome", "abra o chrome",
         "abrir o chrome"
     ]
-
-    if any(t in msg for t in triggers):
+    if any(t in msg_norm for t in triggers):
         return 0.9
-
     return 0.0
 
 
-# =============================================================
-# MAPA DE REGRAS
-# =============================================================
-
 REGRAS = {
-     "launcher": _checar_launcher,
-     
+    "launcher":           _checar_launcher,
     "internet_explicita": _checar_pesquisa_explicita,
-    "memoria": _checar_memoria,
-    "lembrete": _checar_lembrete,
-    "calculo": _checar_calculo,
-    "identidade": _checar_identidade,
-    "saudacao": _checar_saudacao,
-    "hora": _checar_hora,
-    "internet": _checar_pergunta_web,
+    "memoria":            _checar_memoria,
+    "lembrete":           _checar_lembrete,
+    "calculo":            _checar_calculo,
+    "identidade":         _checar_identidade,
+    "saudacao":           _checar_saudacao,
+    "hora":               _checar_hora,
+    "internet":           _checar_pergunta_web,
 }
 
 
-# =============================================================
-# DECISÃO COM CONTEXTO
-# =============================================================
-
 def decidir(mensagem: str, contexto: dict = None) -> dict:
-    msg_norm = normalizar(mensagem)
     contexto = contexto or {}
+    msg_norm = normalizar(mensagem)
 
     pontuacoes = {}
 
     for nome, regra in REGRAS.items():
-        score = regra(msg_norm)
+        # hora recebe a mensagem original para checar o prefixo com vírgula
+        entrada = mensagem if nome == "hora" else msg_norm
+        score = regra(entrada)
         if score > 0:
             pontuacoes[nome] = score
 
-    # 🔥 CONTEXTO: continuidade de conversa
+    # contexto: continuidade de conversa
     if contexto.get("ultimo_destino") == "internet":
         if msg_norm.startswith(("e ", "e onde", "e quando", "e como")):
             pontuacoes["internet"] = max(pontuacoes.get("internet", 0), 0.85)
 
     if not pontuacoes:
         return {
-            "destino": "ollama",
+            "destino":   "ollama",
             "confianca": 0.0,
-            "regra": "fallback",
-            "msg_norm": msg_norm,
+            "regra":     "fallback",
+            "msg_norm":  msg_norm,
         }
 
     destino = max(pontuacoes, key=pontuacoes.get)
 
     return {
-        "destino": destino,
+        "destino":   destino,
         "confianca": pontuacoes[destino],
-        "regra": destino,
-        "msg_norm": msg_norm,
+        "regra":     destino,
+        "msg_norm":  msg_norm,
     }

@@ -1,35 +1,40 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+PREFIXO = "pyxie,"
+
 
 class Module:
 
     name = "hora"
 
     def run(self, msg):
-        msg = msg.lower()
+        msg = msg.lower().strip()
+
+        if not msg.startswith(PREFIXO):
+            return None
+
+        msg = msg[len(PREFIXO):].strip()
 
         try:
             agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
-        except:
+        except Exception:
             agora = datetime.now()
 
         dias = {
-            "monday": "segunda-feira",
-            "tuesday": "terça-feira",
+            "monday":    "segunda-feira",
+            "tuesday":   "terça-feira",
             "wednesday": "quarta-feira",
-            "thursday": "quinta-feira",
-            "friday": "sexta-feira",
-            "saturday": "sábado",
-            "sunday": "domingo"
+            "thursday":  "quinta-feira",
+            "friday":    "sexta-feira",
+            "saturday":  "sábado",
+            "sunday":    "domingo"
         }
 
-        # 🔥 DATA (FORÇADO)
-        if "dia" in msg:
+        if "dia" in msg or "data" in msg:
             dia_semana = dias.get(agora.strftime("%A").lower(), "")
             return f"Hoje é {dia_semana}, {agora.strftime('%d/%m/%Y')}"
 
-        # 🔥 HORA
         if "hora" in msg:
             return f"Agora são {agora.strftime('%H:%M')}"
 
