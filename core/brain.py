@@ -20,6 +20,8 @@ from core.language_pipeline import LanguagePipeline
 from core.decision import decidir
 from core.memory.short_term import ShortTermMemory
 
+from core.llm import perguntar_llm
+
 
 from core.memory.LTM import (
     extrair_e_salvar,
@@ -29,8 +31,6 @@ from core.memory.LTM import (
     detectar_comando_memoria,
     limpar_expirados,
 )
-
-from modules.ollama_ai import perguntar_ollama
 
 
 # =============================================================
@@ -206,7 +206,7 @@ class Brain:
             pergunta = extrair_pergunta(original_message)
 
             if pergunta:
-                resposta_ia = perguntar_ollama(pergunta, "")
+                resposta_ia = perguntar_llm(pergunta, "")
                 if resposta_ia:
                     resposta += " " + resposta_ia
 
@@ -219,7 +219,7 @@ class Brain:
             pergunta = extrair_pergunta(original_message)
 
             if pergunta:
-                resposta_ia = perguntar_ollama(pergunta, "")
+                resposta_ia = perguntar_llm(pergunta, "")
                 if resposta_ia:
                     resposta += " " + resposta_ia
 
@@ -232,7 +232,7 @@ class Brain:
             pergunta = extrair_pergunta(original_message)
 
             if pergunta:
-                resposta_ia = perguntar_ollama(pergunta, "")
+                resposta_ia = perguntar_llm(pergunta, "")
                 if resposta_ia:
                     resposta += " " + resposta_ia
 
@@ -407,7 +407,7 @@ class Brain:
             return resposta_final
 
         # --------------------------------------------------
-        # FALLBACK FINAL — Ollama com contexto seletivo
+        # FALLBACK FINAL — IA com contexto seletivo
         # --------------------------------------------------
         contexto_stm        = self.stm.get_context_seletivo(max_chars=1200)
         contexto_memoria_db = gerar_contexto_para_prompt(original_message)
@@ -429,7 +429,7 @@ class Brain:
         ).strip()
 
         try:
-            response = perguntar_ollama(original_message, contexto_final)
+            response = perguntar_llm(original_message, contexto_final)
         except Exception:
             response = None
 

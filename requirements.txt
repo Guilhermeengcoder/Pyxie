@@ -6,6 +6,8 @@
 fastapi
 uvicorn
 pydantic
+groq
+python-dotenv
 
 # HTTP
 requests

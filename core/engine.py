@@ -4,7 +4,8 @@ from core.brain import brain
 from core.context import Context
 from core.nlp import detectar_intencao
 from core.module_loader import carregar_modulos
-from modules.ollama_ai import perguntar_ollama
+#from modules.ollama_ai import perguntar_ollama
+from modules.groq_ai import perguntar_groq
 
 # =============================================================
 # CONTEXTO E MÓDULOS GLOBAIS
@@ -127,7 +128,9 @@ def processar_mensagem(msg: str):
     # FALLBACK IA — contexto limitado para não sobrecarregar
     # =========================================================
     memoria = "\n".join(context.get_context()[-5:])
-    resposta = perguntar_ollama(msg, memoria)
+    #resposta = perguntar_ollama(msg, memoria)
+    resposta = perguntar_groq(msg, memoria)
+
 
     print(f"[engine] fallback IA em {(time.perf_counter() - inicio_total):.3f}s")
     return resposta
