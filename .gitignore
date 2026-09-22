@@ -1,3 +1,8 @@
 .env
 __pycache__/
 *.pyc
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/knowledge.json
+data/reminders.json

@@ -20,7 +20,7 @@ from core.language_pipeline import LanguagePipeline
 from core.decision import decidir
 from core.memory.short_term import ShortTermMemory
 
-from core.llm import perguntar_llm
+from core.llm import perguntar_llm, perguntar_llm_imagem
 
 
 from core.memory.LTM import (
@@ -37,6 +37,7 @@ from core.memory.LTM import (
 # FUNÇÕES AUXILIARES
 # =============================================================
 
+
 def normalizar(texto):
     texto = texto.lower().strip()
     texto = unicodedata.normalize("NFD", texto)
@@ -51,8 +52,15 @@ def normalizar(texto):
 
 def limpar_pergunta(pergunta):
     remover = [
-        "me fale sobre", "fale sobre", "me diga sobre", "diga sobre",
-        "quero saber sobre", "procure por", "procure", "pesquise", "sobre"
+        "me fale sobre",
+        "fale sobre",
+        "me diga sobre",
+        "diga sobre",
+        "quero saber sobre",
+        "procure por",
+        "procure",
+        "pesquise",
+        "sobre",
     ]
 
     for r in remover:
@@ -69,7 +77,7 @@ def melhorar_query(pergunta, context):
 
 
 def extrair_pergunta(texto):
-    partes = texto.split(",")
+    partes = texto.split(",", 1)
     if len(partes) > 1:
         return partes[1].strip()
     return None
@@ -82,7 +90,7 @@ def calcular_seguro(expression: str):
     Lança ValueError se a expressão contiver algo não permitido.
     """
     try:
-        tree = ast.parse(expression, mode='eval')
+        tree = ast.parse(expression, mode="eval")
     except SyntaxError:
         raise ValueError("Expressão inválida.")
 
@@ -91,9 +99,15 @@ def calcular_seguro(expression: str):
         ast.BinOp,
         ast.UnaryOp,
         ast.Constant,
-        ast.Add, ast.Sub, ast.Mult, ast.Div,
-        ast.FloorDiv, ast.Mod, ast.Pow,
-        ast.USub, ast.UAdd,
+        ast.Add,
+        ast.Sub,
+        ast.Mult,
+        ast.Div,
+        ast.FloorDiv,
+        ast.Mod,
+        ast.Pow,
+        ast.USub,
+        ast.UAdd,
     )
 
     for node in ast.walk(tree):
@@ -107,19 +121,68 @@ def calcular_seguro(expression: str):
 # BRAIN — CLASSE ÚNICA
 # =============================================================
 
-class Brain:
 
+class Brain:
     def __init__(self):
-        self.modules     = carregar_modulos()
+        self.modules = carregar_modulos()
         self.personality = Personality()
-        self.context     = Context()
-        self.language    = LanguagePipeline()
-        self.stm         = ShortTermMemory()
+        self.context = Context()
+        self.language = LanguagePipeline()
+        self.stm = ShortTermMemory()
+
+        # ------------------------------------------------------
+        # MEMÓRIA POR CONVERSA (histórico do front-end)
+        # id da conversa -> (ShortTermMemory, Context)
+        # ------------------------------------------------------
+        self._conversas = {}
+        self._conversa_atual = None
 
         limpar_expirados()
 
     def register_module(self, name, module):
         self.modules[name] = module
+
+    # ----------------------------------------------------------
+    # TROCA DE CONVERSA — chamado pela API antes de process()
+    # ----------------------------------------------------------
+
+    def selecionar_conversa(self, conversa_id, historico=None):
+        """
+        Garante que self.stm/self.context correspondem à conversa
+        que o front-end está mostrando.
+
+        conversa_id -> id enviado pelo front-end (pode ser None)
+        historico   -> lista [{"role": "user"|"assistant", "content": str}]
+                       usada só na primeira vez que o servidor vê essa
+                       conversa (ex.: depois de reiniciar o servidor).
+        """
+        if not conversa_id:
+            return
+
+        if conversa_id == self._conversa_atual and not self.stm.is_expired():
+            return
+
+        entrada = self._conversas.get(conversa_id)
+
+        if entrada and not entrada[0].is_expired():
+            self.stm, self.context = entrada
+        else:
+            # Conversa nova para este processo, ou expirada:
+            # reconstrói a memória curta a partir do histórico do navegador
+            self.stm = ShortTermMemory()
+            self.context = Context()
+
+            for m in (historico or [])[-6:]:
+                if m.get("role") in ("user", "assistant") and m.get("content"):
+                    self.stm.add_message(m["role"], m["content"])
+
+            self._conversas[conversa_id] = (self.stm, self.context)
+
+            # Evita crescer sem limite: descarta a conversa mais antiga
+            if len(self._conversas) > 20:
+                self._conversas.pop(next(iter(self._conversas)))
+
+        self._conversa_atual = conversa_id
 
     # ----------------------------------------------------------
     # ENTRY POINT — lida com múltiplas tarefas
@@ -142,6 +205,41 @@ class Brain:
         return self._processar_unica(message)
 
     # ----------------------------------------------------------
+    # IMAGEM (anexo ou câmera) — chamado pela API quando há imagem
+    # ----------------------------------------------------------
+
+    def processar_imagem(self, message, imagem):
+
+        if self.stm.is_expired():
+            self.stm.clear()
+
+        pergunta = (message or "").strip() or "Descreva o que você vê nesta imagem."
+
+        # Histórico curto da conversa (a imagem em si não fica salva na memória)
+        historico = ""
+        for m in self.stm.get_context_seletivo(max_chars=1200):
+            if m["role"] == "system":
+                historico += m["content"] + "\n\n"
+            elif m["role"] == "user":
+                historico += f"Usuário: {m['content']}\n"
+            elif m["role"] == "assistant":
+                historico += f"PYXIE: {m['content']}\n"
+
+        self.stm.add_message("user", f"[imagem enviada] {pergunta}")
+
+        try:
+            resposta = perguntar_llm_imagem(pergunta, imagem, historico)
+        except Exception:
+            resposta = None
+
+        if not resposta:
+            resposta = "Não consegui analisar essa imagem agora."
+
+        resposta_final = self.personality.aplicar(resposta)
+        self._finalizar(message, resposta_final)
+        return resposta_final
+
+    # ----------------------------------------------------------
     # PROCESSAMENTO DE UMA ÚNICA TAREFA
     # ----------------------------------------------------------
 
@@ -155,7 +253,7 @@ class Brain:
         if original_message.startswith("pyxie"):
             original_message = original_message.replace("pyxie", "", 1).strip()
 
-        resultado         = self.language.processar(original_message)
+        resultado = self.language.processar(original_message)
         processed_message = resultado["corrigido"]
 
         self.stm.add_message("user", processed_message)
@@ -174,7 +272,9 @@ class Brain:
                 return resposta_final
             elif acao == "apagar":
                 apagou = apagar_memoria(conteudo)
-                msg = "Memória apagada." if apagou else "Não encontrei nada para apagar."
+                msg = (
+                    "Memória apagada." if apagou else "Não encontrei nada para apagar."
+                )
                 resposta_final = self.personality.aplicar(msg)
                 self._finalizar(message, resposta_final)
                 return resposta_final
@@ -202,8 +302,10 @@ class Brain:
             except Exception:
                 agora = datetime.now()
 
-            resposta = f"Bom dia, {obter_usuario()}. Hoje é {agora.strftime('%d/%m/%Y')}."
-            pergunta = extrair_pergunta(original_message)
+            resposta = (
+                f"Bom dia, {obter_usuario()}. Hoje é {agora.strftime('%d/%m/%Y')}."
+            )
+            pergunta = extrair_pergunta(message)
 
             if pergunta:
                 resposta_ia = perguntar_llm(pergunta, "")
@@ -216,7 +318,7 @@ class Brain:
 
         if original_message.startswith("boa tarde"):
             resposta = f"Boa tarde, {obter_usuario()}."
-            pergunta = extrair_pergunta(original_message)
+            pergunta = extrair_pergunta(message)
 
             if pergunta:
                 resposta_ia = perguntar_llm(pergunta, "")
@@ -229,7 +331,7 @@ class Brain:
 
         if original_message.startswith("boa noite"):
             resposta = f"Boa noite, {obter_usuario()}."
-            pergunta = extrair_pergunta(original_message)
+            pergunta = extrair_pergunta(message)
 
             if pergunta:
                 resposta_ia = perguntar_llm(pergunta, "")
@@ -244,9 +346,9 @@ class Brain:
         # DECISÃO CENTRAL
         # --------------------------------------------------
 
-        decisao   = decidir(original_message, self.context)
+        decisao = decidir(original_message, self.context)
         categoria = decisao.get("destino")
-        modulo    = categoria
+        modulo = categoria
 
         modulos_candidatos = []
 
@@ -283,7 +385,7 @@ class Brain:
             respostas = [
                 f"Oi, {obter_usuario()}.",
                 f"Olá, {obter_usuario()}.",
-                f"E aí, {obter_usuario()}."
+                f"E aí, {obter_usuario()}.",
             ]
             resposta_final = self.personality.aplicar(random.choice(respostas))
             self._finalizar(message, resposta_final)
@@ -310,10 +412,7 @@ class Brain:
 
         if modulo == "calculo":
             expression = (
-                processed_message
-                .replace("calcule", "")
-                .replace("quanto e", "")
-                .strip()
+                processed_message.replace("calcule", "").replace("quanto e", "").strip()
             )
             try:
                 result = calcular_seguro(expression)
@@ -323,7 +422,9 @@ class Brain:
             except (ValueError, ZeroDivisionError):
                 pass
 
-            resposta_final = self.personality.aplicar("Não consegui calcular essa conta.")
+            resposta_final = self.personality.aplicar(
+                "Não consegui calcular essa conta."
+            )
             self._finalizar(message, resposta_final)
             return resposta_final
 
@@ -334,7 +435,7 @@ class Brain:
                 self.context.set_entity(pergunta)
 
             self.context.update_topic(pergunta)
-            query    = melhorar_query(pergunta, self.context)
+            query = melhorar_query(pergunta, self.context)
             response = buscar_web(query)
 
             if response:
@@ -352,8 +453,7 @@ class Brain:
 
         if modulo == "memoria":
             conteudo = (
-                processed_message
-                .replace("lembre que", "")
+                processed_message.replace("lembre que", "")
                 .replace("lembrar que", "")
                 .strip()
             )
@@ -389,7 +489,10 @@ class Brain:
             self._finalizar(message, resposta_final)
             return resposta_final
 
-        if "qual e o seu proposito" in original_message or "qual seu proposito" in original_message:
+        if (
+            "qual e o seu proposito" in original_message
+            or "qual seu proposito" in original_message
+        ):
             resposta_final = self.personality.aplicar(
                 "Meu propósito é te ajudar, aprender com você e facilitar suas tarefas no dia a dia."
             )
@@ -409,9 +512,9 @@ class Brain:
         # --------------------------------------------------
         # FALLBACK FINAL — IA com contexto seletivo
         # --------------------------------------------------
-        contexto_stm        = self.stm.get_context_seletivo(max_chars=1200)
+        contexto_stm = self.stm.get_context_seletivo(max_chars=1200)
         contexto_memoria_db = gerar_contexto_para_prompt(original_message)
-        contexto_extra      = self.context.get_entity() or ""
+        contexto_extra = self.context.get_entity() or ""
 
         contexto_historico = ""
         for m in contexto_stm:
@@ -423,9 +526,11 @@ class Brain:
                 contexto_historico += f"PYXIE: {m['content']}\n"
 
         contexto_final = (
-            contexto_memoria_db[:400] + "\n\n" +
-            contexto_historico        + "\n\n" +
-            contexto_extra[:100]
+            contexto_memoria_db[:400]
+            + "\n\n"
+            + contexto_historico
+            + "\n\n"
+            + contexto_extra[:100]
         ).strip()
 
         try:
@@ -439,16 +544,19 @@ class Brain:
             self._finalizar(message, resposta_final)
             return resposta_final
 
-        resposta_final = self.personality.aplicar("Ainda não encontrei uma resposta para isso.")
+        resposta_final = self.personality.aplicar(
+            "Ainda não encontrei uma resposta para isso."
+        )
         self._finalizar(message, resposta_final)
         return resposta_final
 
     # ----------------------------------------------------------
-    # FINALIZAÇÃO — STM 
+    # FINALIZAÇÃO — STM
     # ----------------------------------------------------------
 
     def _finalizar(self, user_input: str, resposta: str):
         self.stm.add_message("assistant", resposta)
+
 
 # =============================================================
 # INSTÂNCIA GLOBAL
