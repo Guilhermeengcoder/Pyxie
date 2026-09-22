@@ -2,121 +2,116 @@
 # core/multi_task.py — Divisor de Múltiplas Tarefas
 # PYXIE AI
 #
-# Responsabilidade:
-#   - Detectar se uma mensagem contém mais de uma tarefa
-#   - Dividir a mensagem em subtarefas independentes
-#   - Retornar lista ordenada para o brain processar em sequência
+# Regra principal:
+#   Só divide a mensagem quando CADA pedaço for, de fato, uma
+#   tarefa (começa com verbo de comando). Vírgulas e "e" dentro
+#   de frases normais NÃO dividem nada.
 #
-# Exemplos de mensagens compostas:
-#   "abre o chrome e pesquise o que é IA"
-#   "abre o spotify e o chrome"
-#   "que horas são e abre o notepad"
+# Divide:
+#   "abre o chrome e pesquise o que é IA"   -> 2 tarefas
+#   "abre o spotify e o chrome"             -> 2 tarefas
+#   "que horas são e abre o notepad"        -> 2 tarefas
+#
+# NÃO divide:
+#   "oi, tudo bem?"                         -> 1 tarefa
+#   "eu gosto de gatos, cachorros e pássaros" -> 1 tarefa
+#   "pesquise sobre gatos e cachorros"      -> 1 tarefa
 # =============================================================
 
 import re
 
-# Conjunções e conectivos que separam tarefas
+# Separadores, do mais específico para o mais genérico
 SEPARADORES = [
-    r"\s+e\s+depois\s+",   # "...e depois..."
-    r"\s+depois\s+",        # "...depois..."
-    r"\s+e\s+também\s+",   # "...e também..."
-    r"\s+também\s+",        # "...também..."
-    r"\s+e\s+",             # "...e..."  (mais genérico, vai por último)
-    r",\s*",                # "..., ..."
+    r"\s+e\s+depois\s+",
+    r"\s+depois\s+",
+    r"\s+e\s+também\s+",
+    r"\s+também\s+",
+    r"\s+e\s+",
+    r",\s*",
 ]
 
-# Palavras que indicam início de uma nova tarefa
-# (se aparecerem após um separador, confirma que é nova tarefa)
-VERBOS_ACAO = [
+# Verbos de abrir — permitem reaproveitar o verbo no pedaço seguinte:
+# "abre o spotify e o chrome" -> "abre o spotify", "abre o chrome"
+VERBOS_ABRIR = [
     "abre", "abra", "abrir",
+    "inicia", "inicie",
+    "lança", "lance",
+]
+
+# Verbos que iniciam uma tarefa independente.
+# (Palavras interrogativas como "como", "qual", "quem" ficam de FORA
+#  de propósito: "oi, como vai?" não é duas tarefas.)
+VERBOS_ACAO = VERBOS_ABRIR + [
     "pesquise", "procure", "busque",
     "calcule", "calcula",
     "me diga", "me fale", "me diz",
-    "qual", "quem", "quando", "onde", "como", "o que",
-    "inicia", "inicie", "lança",
+    "me explique", "explique",
     "mostra", "mostre",
 ]
 
+# Pedidos curtos que também contam como tarefa
+COMANDOS_CURTOS = [
+    "que horas", "que dia", "que data",
+    "qual a hora", "qual o horário", "qual a data",
+]
 
-def _e_nova_tarefa(trecho: str) -> bool:
-    """Verifica se um trecho parece ser o início de uma tarefa independente."""
+
+def _comeca_com(trecho: str, frases: list[str]) -> str | None:
+    """Retorna a frase (palavra inteira) com que o trecho começa, ou None."""
     trecho = trecho.strip().lower()
-    if not trecho:
-        return False
+    for frase in frases:
+        if trecho == frase or trecho.startswith(frase + " "):
+            return frase
+    return None
 
-    # Se começa com verbo de ação → é nova tarefa
-    for verbo in VERBOS_ACAO:
-        if trecho.startswith(verbo):
-            return True
 
-    # Se tem pelo menos 3 palavras e não é só complemento → provavelmente tarefa
-    if len(trecho.split()) >= 3:
-        return True
-
-    return False
+def _e_tarefa(trecho: str) -> bool:
+    """Um trecho só é tarefa se começar com verbo de ação ou comando curto."""
+    return _comeca_com(trecho, VERBOS_ACAO + COMANDOS_CURTOS) is not None
 
 
 def dividir_tarefas(mensagem: str) -> list[str]:
     """
-    Divide uma mensagem em lista de subtarefas.
-    Retorna lista com 1 item se não encontrar múltiplas tarefas.
-
-    Exemplos:
-        "abre o chrome e pesquise IA"
-        → ["abre o chrome", "pesquise IA"]
-
-        "abre o spotify e o chrome"
-        → ["abre o spotify", "abre o chrome"]
-
-        "que horas são?"
-        → ["que horas são?"]
+    Divide uma mensagem em subtarefas.
+    Retorna lista com 1 item se a mensagem não for composta.
     """
     msg = mensagem.strip()
 
-    # Tenta cada separador em ordem de especificidade
     for sep in SEPARADORES:
-        partes = re.split(sep, msg, flags=re.IGNORECASE)
+        partes = [
+            p.strip()
+            for p in re.split(sep, msg, flags=re.IGNORECASE)
+            if p.strip()
+        ]
 
         if len(partes) < 2:
             continue
 
-        partes = [p.strip() for p in partes if p.strip()]
-
-        # Verifica se as partes fazem sentido como tarefas separadas
-        tarefas_validas = []
-        ultimo_verbo = None
+        tarefas = []
+        verbo_abrir = None   # último verbo de "abrir" visto
+        valido = True
 
         for i, parte in enumerate(partes):
-            if i == 0:
-                tarefas_validas.append(parte)
-                # Extrai o verbo principal da primeira tarefa (ex: "abre")
-                palavras = parte.lower().split()
-                for verbo in VERBOS_ACAO:
-                    v_palavras = verbo.split()
-                    if palavras[:len(v_palavras)] == v_palavras:
-                        ultimo_verbo = verbo
-                        break
+            if _e_tarefa(parte):
+                tarefas.append(parte)
+                verbo_abrir = _comeca_com(parte, VERBOS_ABRIR)
+
+            elif i > 0 and verbo_abrir and len(parte.split()) <= 4:
+                # complemento curto: "abre o spotify e [o chrome]"
+                tarefas.append(f"{verbo_abrir} {parte}")
+
             else:
-                if _e_nova_tarefa(parte):
-                    tarefas_validas.append(parte)
-                    palavras = parte.lower().split()
-                    for verbo in VERBOS_ACAO:
-                        v_palavras = verbo.split()
-                        if palavras[:len(v_palavras)] == v_palavras:
-                            ultimo_verbo = verbo
-                            break
-                else:
-                    # Pode ser complemento do mesmo verbo (ex: "abre o spotify e o chrome")
-                    # Tenta reutilizar o verbo anterior
-                    if ultimo_verbo and len(parte.split()) <= 4:
-                        tarefas_validas.append(f"{ultimo_verbo} {parte}")
-                    else:
-                        tarefas_validas.append(parte)
+                # pedaço que não é tarefa -> a vírgula/"e" era da frase
+                valido = False
+                break
 
-        if len(tarefas_validas) >= 2:
-            return tarefas_validas
+        if valido:
+            # Divide de novo cada tarefa (ex.: "abre A, B e C")
+            resultado = []
+            for t in tarefas:
+                resultado.extend(dividir_tarefas(t))
+            return resultado
 
-    # Nenhum separador funcionou → mensagem única
     return [msg]
 
 

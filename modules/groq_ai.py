@@ -39,8 +39,9 @@ Regras:
 - Continue a conversa naturalmente sem repetir saudações
 - Não repita informações que já foram ditas na conversa
 {instrucao_saudacao}
-- Analise o contexto completo antes de responder
+- Responda só o que foi perguntado e sem acrescentar informações extras, a menos que o usuario peça mais detalhes
 - Outras pessoas podem conversar com você — trate-as pelo nome que informarem
+- Use o histórico e as memórias apenas se forem relevantes para a pergunta atual
 
 
 ### Histórico

@@ -1,4 +1,29 @@
 /* ================================
+   VARIÁVEIS
+================================ */
+
+:root {
+    --bg: #000000;
+    --bg-input: #151515;
+    --bg-hover: #161616;
+    --bg-ativo: #1e1e1e;
+    --bg-usuario: #2a2a2a;
+
+    --borda: #2a2a2a;
+    --borda-input: #333333;
+
+    --texto: #ececec;
+    --texto-suave: #8a8a8a;
+
+    --acento: #8b0000;
+    --acento-hover: #a50000;
+
+    --largura-coluna: 760px;
+    --largura-sidebar: 270px;
+}
+
+
+/* ================================
    CONFIGURAÇÕES GERAIS
 ================================ */
 
@@ -15,25 +40,229 @@ body {
 }
 
 body {
-    font-family: Arial, Helvetica, sans-serif;
-    background: #000000;
-    color: #ffffff;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--texto);
     overflow: hidden;
+}
+
+button {
+    font-family: inherit;
+    color: inherit;
+}
+
+:focus-visible {
+    outline: 2px solid #d14b4b;
+    outline-offset: 2px;
 }
 
 
 /* ================================
-   CONTAINER PRINCIPAL
+   ESTRUTURA
 ================================ */
 
-.chat-container {
-    width: 100%;
+.app {
+    display: flex;
     height: 100vh;
+    height: 100dvh;
+    width: 100%;
+}
+
+.chat-container {
+    flex: 1;
+    min-width: 0;
 
     display: flex;
     flex-direction: column;
 
-    background: #000000;
+    height: 100%;
+    background: var(--bg);
+}
+
+
+/* ================================
+   SIDEBAR (HISTÓRICO)
+================================ */
+
+.sidebar {
+    flex-shrink: 0;
+
+    width: var(--largura-sidebar);
+    height: 100%;
+
+    display: flex;
+    flex-direction: column;
+
+    background: var(--bg);
+    border-right: 1px solid var(--borda);
+
+    transition: margin-left 0.25s ease;
+}
+
+body.sidebar-fechada .sidebar {
+    margin-left: calc(var(--largura-sidebar) * -1);
+}
+
+.sidebar-topo {
+    padding: 14px 12px 8px;
+}
+
+.btn-nova {
+    width: 100%;
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    padding: 11px 14px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 10px;
+
+    background: transparent;
+
+    font-size: 14px;
+    text-align: left;
+
+    cursor: pointer;
+
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-nova span {
+    font-size: 18px;
+    line-height: 1;
+    color: #d14b4b;
+}
+
+.btn-nova:hover {
+    background: var(--bg-hover);
+    border-color: #444444;
+}
+
+.lista-conversas {
+    flex: 1;
+
+    padding: 4px 8px 12px;
+
+    overflow-y: auto;
+}
+
+.grupo-titulo {
+    padding: 16px 10px 6px;
+
+    color: var(--texto-suave);
+
+    font-size: 12px;
+}
+
+.item-conversa {
+    position: relative;
+
+    display: flex;
+    align-items: center;
+
+    border-radius: 8px;
+}
+
+.item-conversa:hover {
+    background: var(--bg-hover);
+}
+
+.item-conversa.ativa {
+    background: var(--bg-ativo);
+    box-shadow: inset 3px 0 0 var(--acento);
+}
+
+.item-titulo {
+    flex: 1;
+    min-width: 0;
+
+    padding: 10px 10px 10px 12px;
+
+    border: none;
+    background: transparent;
+
+    font-size: 14px;
+    text-align: left;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    cursor: pointer;
+}
+
+.item-apagar {
+    flex-shrink: 0;
+
+    width: 30px;
+    height: 30px;
+    margin-right: 4px;
+
+    border: none;
+    border-radius: 6px;
+
+    background: transparent;
+
+    color: var(--texto-suave);
+    font-size: 18px;
+    line-height: 1;
+
+    opacity: 0;
+
+    cursor: pointer;
+
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.item-conversa:hover .item-apagar,
+.item-apagar:focus-visible {
+    opacity: 1;
+}
+
+.item-apagar:hover {
+    color: #ff6b6b;
+}
+
+.sidebar-rodape {
+    padding: 10px 12px 14px;
+
+    border-top: 1px solid var(--borda);
+}
+
+.btn-limpar {
+    width: 100%;
+
+    padding: 9px 12px;
+
+    border: none;
+    border-radius: 8px;
+
+    background: transparent;
+
+    color: var(--texto-suave);
+    font-size: 13px;
+    text-align: left;
+
+    cursor: pointer;
+
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-limpar:hover {
+    background: var(--bg-hover);
+    color: #ff6b6b;
+}
+
+.overlay {
+    display: none;
+
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+
+    background: rgba(0, 0, 0, 0.65);
 }
 
 
@@ -44,105 +273,192 @@ body {
 .chat-header {
     flex-shrink: 0;
 
-    width: 100%;
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    align-items: center;
 
-    padding: 18px 25px;
+    padding: 12px 16px;
 
-    text-align: center;
-
-    background: #000000;
-
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid var(--borda);
 }
 
-.chat-header h1 {
-    font-size: 28px;
+.chat-titulo {
+    text-align: center;
+}
+
+.chat-titulo h1 {
+    font-size: 22px;
     font-weight: bold;
 }
 
-.chat-header p {
-    margin-top: 5px;
+.chat-titulo p {
+    margin-top: 2px;
 
-    color: #888888;
+    color: var(--texto-suave);
 
-    font-size: 14px;
+    font-size: 13px;
+}
+
+.btn-icone {
+    width: 40px;
+    height: 40px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border: none;
+    border-radius: 10px;
+
+    background: transparent;
+
+    color: var(--texto-suave);
+
+    cursor: pointer;
+
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-icone:hover {
+    background: var(--bg-hover);
+    color: var(--texto);
 }
 
 
 /* ================================
    ÁREA DAS MENSAGENS
+   O padding lateral centraliza a coluna de conversa
 ================================ */
 
 #chat {
     flex: 1;
 
-    width: 90%;
-
-    padding: 30px 5%;
+    padding: 28px max(16px, calc((100% - var(--largura-coluna)) / 2));
 
     overflow-y: auto;
 
     display: flex;
     flex-direction: column;
 
-    gap: 20px;
-
-    scroll-behavior: smooth;
+    gap: 26px;
 }
 
-
-/* ================================
-   MENSAGENS
-================================ */
-
 .message {
-    position: relative;
-
-    max-width: 80%;
-
-    padding: 15px 20px;
-
-    border-radius: 14px;
-
-    line-height: 1.5;
+    line-height: 1.65;
 
     font-size: 15px;
 
     white-space: pre-wrap;
 
-    word-wrap: break-word;
+    overflow-wrap: anywhere;
 }
 
 
 /* ================================
-   MENSAGEM DA PYXIE
+   MENSAGEM DA PYXIE — sem balão
 ================================ */
 
 .pyxie-message {
-    align-self: flex-start;
+    align-self: stretch;
+}
 
-    background: #8b0000;
+.pyxie-message .acoes {
+    margin-top: 6px;
 
-    color: #ffffff;
+    opacity: 0;
 
-    border-bottom-left-radius: 4px;
+    transition: opacity 0.15s;
+}
 
-    box-shadow: 0 3px 12px rgba(139, 0, 0, 0.25);
+.pyxie-message:hover .acoes,
+.pyxie-message:focus-within .acoes {
+    opacity: 1;
+}
+
+.copy-button {
+    padding: 4px 8px;
+
+    border: none;
+    border-radius: 6px;
+
+    background: transparent;
+
+    color: var(--texto-suave);
+
+    font-size: 13px;
+
+    cursor: pointer;
+
+    transition: background 0.15s, color 0.15s;
+}
+
+.copy-button:hover {
+    background: var(--bg-hover);
+    color: var(--texto);
 }
 
 
 /* ================================
-   MENSAGEM DO USUÁRIO
+   MENSAGEM DO USUÁRIO — mantém o balão
 ================================ */
 
 .user-message {
     align-self: flex-end;
 
-    background: #333333;
+    max-width: 80%;
 
-    color: #ffffff;
+    padding: 12px 18px;
 
-    border-bottom-right-radius: 4px;
+    border-radius: 18px;
+    border-bottom-right-radius: 5px;
+
+    background: var(--bg-usuario);
+}
+
+
+/* ================================
+   INDICADOR "PENSANDO"
+================================ */
+
+.digitando {
+    display: flex;
+    gap: 5px;
+
+    padding: 10px 0;
+}
+
+.digitando span {
+    width: 7px;
+    height: 7px;
+
+    border-radius: 50%;
+
+    background: var(--texto-suave);
+
+    animation: pulso 1.2s infinite ease-in-out;
+}
+
+.digitando span:nth-child(2) {
+    animation-delay: 0.15s;
+}
+
+.digitando span:nth-child(3) {
+    animation-delay: 0.3s;
+}
+
+@keyframes pulso {
+
+    0%,
+    80%,
+    100% {
+        opacity: 0.25;
+        transform: scale(0.8);
+    }
+
+    40% {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 
@@ -153,91 +469,83 @@ body {
 .chat-input {
     flex-shrink: 0;
 
-    width: 100%;
-
-    display: flex;
-
-    gap: 10px;
-
-    padding: 15px 5%;
-
-    background: #000000;
-
-    border-top: 1px solid #2a2a2a;
+    padding: 12px max(16px, calc((100% - var(--largura-coluna)) / 2)) 20px;
 }
 
+.input-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 
-/* ================================
-   CAMPO DE TEXTO
-================================ */
+    padding: 6px;
 
-.chat-input input {
-    flex: 1;
+    border: 1px solid var(--borda-input);
+    border-radius: 28px;
 
-    min-width: 0;
-
-    padding: 15px 18px;
-
-    border: 1px solid #333333;
-
-    border-radius: 10px;
-
-    outline: none;
-
-    background: #151515;
-
-    color: #ffffff;
-
-    font-size: 15px;
+    background: var(--bg-input);
 
     transition: border-color 0.2s;
 }
 
-.chat-input input::placeholder {
+.input-box:focus-within {
+    border-color: var(--acento);
+}
+
+.input-box input {
+    flex: 1;
+    min-width: 0;
+
+    padding: 10px 6px;
+
+    border: none;
+    outline: none;
+
+    background: transparent;
+
+    color: var(--texto);
+
+    font-family: inherit;
+
+    /* 16px evita o zoom automático no iPhone */
+    font-size: 16px;
+}
+
+.input-box input::placeholder {
     color: #777777;
 }
 
-.chat-input input:focus {
-    border-color: #8b0000;
-}
+#enviar {
+    flex-shrink: 0;
 
+    width: 40px;
+    height: 40px;
 
-/* ================================
-   BOTÃO ENVIAR
-================================ */
-
-.chat-input button {
-    padding: 0 25px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
     border: none;
+    border-radius: 50%;
 
-    border-radius: 10px;
-
-    background: #8b0000;
+    background: var(--acento);
 
     color: #ffffff;
 
-    font-size: 15px;
-
-    font-weight: bold;
-
     cursor: pointer;
 
-    transition:
-        background 0.2s,
-        transform 0.1s;
+    transition: background 0.2s, transform 0.1s;
 }
 
-.chat-input button:hover {
-    background: #a50000;
+#enviar:hover {
+    background: var(--acento-hover);
 }
 
-.chat-input button:active {
-    transform: scale(0.97);
+#enviar:active {
+    transform: scale(0.94);
 }
 
-.chat-input button:disabled {
-    opacity: 0.5;
+#enviar:disabled {
+    opacity: 0.4;
 
     cursor: not-allowed;
 
@@ -249,73 +557,324 @@ body {
    SCROLLBAR
 ================================ */
 
-#chat::-webkit-scrollbar {
+#chat::-webkit-scrollbar,
+.lista-conversas::-webkit-scrollbar {
     width: 8px;
 }
 
-#chat::-webkit-scrollbar-track {
-    background: #000000;
+#chat::-webkit-scrollbar-track,
+.lista-conversas::-webkit-scrollbar-track {
+    background: transparent;
 }
 
-#chat::-webkit-scrollbar-thumb {
+#chat::-webkit-scrollbar-thumb,
+.lista-conversas::-webkit-scrollbar-thumb {
     background: #333333;
 
     border-radius: 10px;
 }
 
-#chat::-webkit-scrollbar-thumb:hover {
+#chat::-webkit-scrollbar-thumb:hover,
+.lista-conversas::-webkit-scrollbar-thumb:hover {
     background: #555555;
 }
 
 
 /* ================================
-   RESPONSIVIDADE
+   TELAS SEM MOUSE (celular / tablet)
+   Sem hover, os botões precisam ficar visíveis
 ================================ */
 
-@media (max-width: 700px) {
+@media (hover: none) {
 
-    .chat-header {
-        padding: 15px;
+    .pyxie-message .acoes {
+        opacity: 0.8;
     }
 
-    .chat-header h1 {
-        font-size: 24px;
+    .item-apagar {
+        opacity: 0.6;
+    }
+}
+
+
+/* ================================
+   RESPONSIVIDADE
+   No celular o histórico vira uma gaveta por cima do chat
+================================ */
+
+@media (max-width: 800px) {
+
+    .sidebar,
+    body.sidebar-fechada .sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 20;
+
+        margin-left: 0;
+
+        transform: translateX(-100%);
+
+        transition: transform 0.25s ease;
+    }
+
+    body.sidebar-aberta .sidebar {
+        transform: none;
+    }
+
+    body.sidebar-aberta .overlay {
+        display: block;
+    }
+
+    .chat-titulo h1 {
+        font-size: 20px;
     }
 
     #chat {
-        padding: 20px 15px;
+        padding-top: 20px;
     }
 
-    .message {
+    .user-message {
         max-width: 90%;
     }
+}
 
-    .chat-input {
-        padding: 10px 15px;
+
+/* ================================
+   MOVIMENTO REDUZIDO
+================================ */
+
+@media (prefers-reduced-motion: reduce) {
+
+    .sidebar {
+        transition: none;
     }
 
-    .chat-input button {
-        padding: 0 16px;
+    .digitando span {
+        animation: none;
+        opacity: 0.6;
     }
 }
-.copy-button {
-    float: right;
 
-    margin-left: 12px;
+
+/* ================================
+   ANEXO DE IMAGEM
+================================ */
+
+.previa[hidden],
+.aviso[hidden],
+.camera-modal[hidden] {
+    display: none;
+}
+
+.btn-input {
+    flex-shrink: 0;
+
+    width: 40px;
+    height: 40px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
     border: none;
+    border-radius: 50%;
 
     background: transparent;
 
-    color: #ffffff;
+    color: var(--texto-suave);
 
     cursor: pointer;
 
-    font-size: 14px;
-
-    opacity: 0.7;
+    transition: background 0.15s, color 0.15s;
 }
 
-.copy-button:hover {
-    opacity: 1;
+.btn-input:hover {
+    background: var(--bg-hover);
+    color: var(--texto);
+}
+
+.btn-input:disabled {
+    opacity: 0.4;
+
+    cursor: not-allowed;
+}
+
+.previa {
+    margin-bottom: 10px;
+}
+
+.previa-item {
+    position: relative;
+
+    display: inline-block;
+}
+
+.previa-item img {
+    display: block;
+
+    max-width: 120px;
+    max-height: 120px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 12px;
+}
+
+.previa-remover {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+
+    width: 24px;
+    height: 24px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 50%;
+
+    background: #222222;
+
+    color: var(--texto);
+    font-size: 15px;
+    line-height: 1;
+
+    cursor: pointer;
+}
+
+.previa-remover:hover {
+    background: var(--acento);
+}
+
+.aviso {
+    margin-bottom: 10px;
+
+    padding: 8px 12px;
+
+    border-radius: 8px;
+
+    background: #2a1010;
+
+    color: #ff9a9a;
+
+    font-size: 13px;
+}
+
+/* Imagem dentro do balão do usuário */
+.user-message .anexo {
+    display: block;
+
+    max-width: 100%;
+    max-height: 260px;
+
+    border-radius: 12px;
+}
+
+.user-message .anexo+div {
+    margin-top: 8px;
+}
+
+/* Arrastar uma imagem para a tela */
+.chat-container.arrastando {
+    outline: 2px dashed var(--acento);
+    outline-offset: -8px;
+}
+
+
+/* ================================
+   CÂMERA
+================================ */
+
+.camera-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 16px;
+
+    background: rgba(0, 0, 0, 0.88);
+}
+
+.camera-painel {
+    width: min(100%, 640px);
+
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+#camera-video {
+    width: 100%;
+    max-height: 70vh;
+    max-height: 70dvh;
+
+    object-fit: contain;
+
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+
+    background: #000000;
+}
+
+#camera-video.espelhado {
+    transform: scaleX(-1);
+}
+
+.camera-erro {
+    color: #ff9a9a;
+
+    font-size: 14px;
+    text-align: center;
+}
+
+.camera-erro:empty {
+    display: none;
+}
+
+.camera-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.camera-btn {
+    padding: 11px 20px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 10px;
+
+    background: transparent;
+
+    font-size: 15px;
+
+    cursor: pointer;
+
+    transition: background 0.15s;
+}
+
+.camera-btn:hover {
+    background: var(--bg-hover);
+}
+
+.camera-btn:disabled {
+    opacity: 0.4;
+
+    cursor: not-allowed;
+}
+
+.camera-btn-principal {
+    border-color: var(--acento);
+
+    background: var(--acento);
+
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.camera-btn-principal:hover {
+    background: var(--acento-hover);
 }

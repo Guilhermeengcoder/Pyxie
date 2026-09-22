@@ -11,33 +11,120 @@
 
 <body>
 
-    <div class="chat-container">
+    <div class="app">
 
-        <header class="chat-header">
-            <h1>PYXIE</h1>
-            <p>Sua assistente pessoal</p>
-        </header>
+        <!-- ================================
+             HISTÓRICO DE CONVERSAS
+        ================================ -->
+        <aside class="sidebar" id="sidebar" aria-label="Histórico de conversas">
 
-        <main id="chat">
-            <div class="message pyxie-message">
-                
-            Olá! Como posso ajudar?
+            <div class="sidebar-topo">
+                <button id="nova-conversa" class="btn-nova" type="button">
+                    <span aria-hidden="true">+</span> Nova conversa
+                </button>
             </div>
-        </main>
 
-        <footer class="chat-input">
+            <nav id="lista-conversas" class="lista-conversas"></nav>
 
-            <input
-                type="text"
-                id="mensagem"
-                placeholder="Digite sua mensagem..."
-                autocomplete="off"
-            >
+            <div class="sidebar-rodape">
+                <button id="limpar-tudo" class="btn-limpar" type="button">
+                    Limpar histórico
+                </button>
+            </div>
 
-            <button id="enviar">Enviar</button>
+        </aside>
 
-        </footer>
+        <div class="overlay" id="overlay"></div>
 
+        <!-- ================================
+             CHAT
+        ================================ -->
+        <div class="chat-container">
+
+            <header class="chat-header">
+                <button id="menu" class="btn-icone" type="button" aria-label="Abrir ou fechar o histórico">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                        <path d="M3 5h14M3 10h14M3 15h14"/>
+                    </svg>
+                </button>
+
+                <div class="chat-titulo">
+                    <h1>PYXIE</h1>
+                    <p>Sua assistente pessoal</p>
+                </div>
+            </header>
+
+            <main id="chat"></main>
+
+            <footer class="chat-input">
+
+                <div id="aviso" class="aviso" role="alert" hidden></div>
+
+                <!-- Prévia da imagem anexada -->
+                <div id="previa" class="previa" hidden>
+                    <div class="previa-item">
+                        <img id="previa-img" alt="Imagem anexada">
+                        <button id="previa-remover" class="previa-remover" type="button" aria-label="Remover imagem">×</button>
+                    </div>
+                </div>
+
+                <div class="input-box">
+
+                    <button id="anexar" class="btn-input" type="button" aria-label="Anexar imagem" title="Anexar imagem">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                        </svg>
+                    </button>
+
+                    <button id="camera" class="btn-input" type="button" aria-label="Tirar foto com a câmera" title="Tirar foto">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                            <circle cx="12" cy="13" r="4"/>
+                        </svg>
+                    </button>
+
+                    <input
+                        type="text"
+                        id="mensagem"
+                        placeholder="Digite sua mensagem..."
+                        autocomplete="off"
+                    >
+
+                    <button id="enviar" type="button" aria-label="Enviar mensagem">
+                        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M10 16V4M4.5 9.5 10 4l5.5 5.5"/>
+                        </svg>
+                    </button>
+
+                </div>
+
+                <!-- Seletores de arquivo (escondidos) -->
+                <input type="file" id="arquivo" accept="image/*" hidden>
+                <input type="file" id="arquivo-camera" accept="image/*" capture="environment" hidden>
+
+            </footer>
+
+        </div>
+
+    </div>
+
+    <!-- ================================
+         CÂMERA
+    ================================ -->
+    <div id="camera-modal" class="camera-modal" role="dialog" aria-modal="true" aria-label="Câmera" hidden>
+        <div class="camera-painel">
+
+            <video id="camera-video" autoplay playsinline muted></video>
+
+            <p id="camera-erro" class="camera-erro" role="alert"></p>
+
+            <div class="camera-acoes">
+                <button id="camera-cancelar" class="camera-btn" type="button">Cancelar</button>
+                <button id="camera-virar" class="camera-btn" type="button">Virar câmera</button>
+                <button id="camera-capturar" class="camera-btn camera-btn-principal" type="button">Tirar foto</button>
+            </div>
+
+        </div>
     </div>
 
     <script src="script.js"></script>
