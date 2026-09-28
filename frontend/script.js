@@ -852,6 +852,10 @@ async function enviarMensagem() {
 
         respostaTexto = dados.resposta;
 
+        if (dados.uso) {
+            atualizarPainelUso(dados.uso);
+        }
+
     } catch (erro) {
 
         console.error(
@@ -898,6 +902,109 @@ async function enviarMensagem() {
 
     // Volta o foco para o campo
     input.focus();
+}
+
+
+// ========================================
+// PAINEL DE USO (Groq)
+// ========================================
+
+const botaoUso = document.getElementById("uso-toggle");
+const painelUso = document.getElementById("painel-uso");
+const overlayUso = document.getElementById("overlay-uso");
+
+function estaNoCelularUso() {
+    return window.matchMedia("(max-width: 800px)").matches;
+}
+
+function alternarPainelUso() {
+    document.body.classList.toggle(
+        estaNoCelularUso() ? "uso-aberta" : "uso-fechada"
+    );
+}
+
+function fecharPainelUsoNoCelular() {
+    document.body.classList.remove("uso-aberta");
+}
+
+function formatarNumero(n) {
+    if (n === null || n === undefined) return "—";
+    return n.toLocaleString("pt-BR");
+}
+
+function atualizarBarra(barraEl, restante, limite) {
+    if (limite === null || limite === undefined || limite === 0 || restante === null) {
+        barraEl.style.width = "0%";
+        return;
+    }
+    const pct = Math.max(0, Math.min(100, (restante / limite) * 100));
+    barraEl.style.width = pct + "%";
+
+    // Fica amarelo/vermelho quando o uso está baixo (perto do limite)
+    barraEl.classList.toggle("barra-atencao", pct <= 25 && pct > 10);
+    barraEl.classList.toggle("barra-critica", pct <= 10);
+}
+
+function atualizarPainelUso(uso) {
+    if (!uso || !painelUso) return;
+
+    const elModelo = document.getElementById("uso-modelo");
+    const elTokensTexto = document.getElementById("uso-tokens-texto");
+    const elTokensBarra = document.getElementById("uso-tokens-barra");
+    const elTokensReset = document.getElementById("uso-tokens-reset");
+    const elPedidosTexto = document.getElementById("uso-pedidos-texto");
+    const elPedidosBarra = document.getElementById("uso-pedidos-barra");
+    const elVazio = document.getElementById("uso-vazio");
+    const elConteudo = document.getElementById("uso-conteudo");
+
+    if (!uso.modelo) {
+        // Ainda não houve nenhuma chamada à Groq nesta sessão do servidor
+        if (elVazio) elVazio.hidden = false;
+        if (elConteudo) elConteudo.hidden = true;
+        return;
+    }
+
+    if (elVazio) elVazio.hidden = true;
+    if (elConteudo) elConteudo.hidden = false;
+
+    if (elModelo) elModelo.textContent = uso.modelo;
+
+    if (elTokensTexto) {
+        elTokensTexto.textContent =
+            formatarNumero(uso.tokens_restantes) + " / " + formatarNumero(uso.tokens_limite);
+    }
+    if (elTokensBarra) {
+        atualizarBarra(elTokensBarra, uso.tokens_restantes, uso.tokens_limite);
+    }
+    if (elTokensReset && uso.tokens_reset) {
+        elTokensReset.textContent = "reseta em " + uso.tokens_reset;
+    }
+
+    if (elPedidosTexto) {
+        elPedidosTexto.textContent =
+            formatarNumero(uso.requests_restantes) + " / " + formatarNumero(uso.requests_limite);
+    }
+    if (elPedidosBarra) {
+        atualizarBarra(elPedidosBarra, uso.requests_restantes, uso.requests_limite);
+    }
+}
+
+async function carregarUsoInicial() {
+    try {
+        const resposta = await fetch("/uso");
+        if (!resposta.ok) return;
+        const dados = await resposta.json();
+        atualizarPainelUso(dados);
+    } catch (erro) {
+        console.warn("Não foi possível carregar o uso inicial:", erro);
+    }
+}
+
+if (botaoUso) {
+    botaoUso.addEventListener("click", alternarPainelUso);
+}
+if (overlayUso) {
+    overlayUso.addEventListener("click", fecharPainelUsoNoCelular);
 }
 
 
@@ -1065,3 +1172,6 @@ if (conversaAtiva()) {
 
 // No celular o histórico começa fechado
 fecharSidebarNoCelular();
+
+// Mostra alguma coisa no painel de uso mesmo antes da 1a mensagem
+carregarUsoInicial();

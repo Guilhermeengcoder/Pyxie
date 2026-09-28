@@ -1,4 +1,4 @@
-from core.memory.LTM import (
+from futuro.LTM import (
     buscar_relevantes,
     apagar_memoria,
 )

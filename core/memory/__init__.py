@@ -1,4 +1,4 @@
-from core.memory.LTM import (
+from futuro.LTM import (
     salvar_fato,
     salvar_permanente,
     salvar_episodio,

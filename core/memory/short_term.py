@@ -99,10 +99,10 @@ class ShortTermMemory:
 
     def __init__(
         self,
-        max_messages: int = 10,
+        max_messages: int = 30,
         ttl_minutes:  int = 30,
         summarizer=None,
-        max_summary_chars: int = 1200,
+        max_summary_chars: int = 4000,
     ):
         self.max_messages      = max_messages
         self.ttl_seconds       = ttl_minutes * 60
@@ -203,7 +203,7 @@ class ShortTermMemory:
         context.extend(m.to_dict() for m in self._messages)
         return context
 
-    def get_context_seletivo(self, max_chars: int = 1200) -> list[dict]:
+    def get_context_seletivo(self, max_chars: int = 4000) -> list[dict]:
         """
         Retorna contexto filtrado para enviar ao Ollama.
 

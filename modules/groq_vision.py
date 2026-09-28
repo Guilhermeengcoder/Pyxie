@@ -15,6 +15,7 @@ import os
 import re
 
 from modules.groq_ai import client, _montar_prompt
+from modules.groq_uso import registrar_headers
 
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 
@@ -29,14 +30,14 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
     """
     pergunta = (comando or "").strip() or "Descreva o que você vê nesta imagem."
 
-    # O prompt-base termina com "### PYXIE", então o aviso da imagem
-    # entra junto da pergunta e não depois dele.
-    pergunta += "\n(O usuário anexou uma imagem. Responda com base no que você vê nela.)"
+    pergunta += (
+        "\n(O usuário anexou uma imagem. Responda com base no que você vê nela.)"
+    )
 
     prompt = _montar_prompt(pergunta, memoria)
 
     try:
-        response = client.chat.completions.create(
+        resposta_bruta = client.chat.completions.with_raw_response.create(
             model=GROQ_VISION_MODEL,
             messages=[
                 {
@@ -50,9 +51,14 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
             max_completion_tokens=MAX_TOKENS_RESPOSTA,
         )
 
+        try:
+            registrar_headers(resposta_bruta.headers, GROQ_VISION_MODEL)
+        except Exception:
+            pass
+
+        response = resposta_bruta.parse()
         texto = response.choices[0].message.content or ""
 
-        # Segurança: remove raciocínio interno caso o modelo devolva <think>
         texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.DOTALL).strip()
 
         return texto or "Não consegui analisar essa imagem."

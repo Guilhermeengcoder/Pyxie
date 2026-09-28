@@ -878,3 +878,175 @@ body.sidebar-fechada .sidebar {
 .camera-btn-principal:hover {
     background: var(--acento-hover);
 }
+
+
+/* ================================
+   PAINEL DE USO (GROQ)
+   Mesma linguagem visual da sidebar, só que do lado direito.
+================================ */
+
+.painel-uso {
+    flex-shrink: 0;
+
+    width: 260px;
+    height: 100%;
+
+    display: flex;
+    flex-direction: column;
+
+    background: var(--bg);
+    border-left: 1px solid var(--borda);
+
+    padding: 16px;
+
+    overflow-y: auto;
+
+    transition: margin-right 0.25s ease;
+}
+
+body.uso-fechada .painel-uso {
+    margin-right: -260px;
+}
+
+.uso-cabecalho h2 {
+    font-size: 14px;
+    font-weight: 600;
+
+    color: var(--texto-suave);
+
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+
+    margin-bottom: 16px;
+}
+
+.uso-vazio {
+    color: var(--texto-suave);
+
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.uso-conteudo[hidden] {
+    display: none;
+}
+
+.uso-bloco {
+    margin-bottom: 18px;
+}
+
+.uso-bloco-topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+
+    font-size: 13px;
+
+    margin-bottom: 6px;
+}
+
+.uso-bloco-topo span:first-child {
+    color: var(--texto-suave);
+}
+
+.uso-bloco-topo span:last-child {
+    font-variant-numeric: tabular-nums;
+}
+
+.uso-barra-fundo {
+    width: 100%;
+    height: 6px;
+
+    border-radius: 999px;
+
+    background: var(--bg-usuario);
+
+    overflow: hidden;
+}
+
+.uso-barra {
+    height: 100%;
+
+    border-radius: 999px;
+
+    background: #3fa34d;
+
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+.uso-barra.barra-atencao {
+    background: #d1a13f;
+}
+
+.uso-barra.barra-critica {
+    background: var(--acento);
+}
+
+.uso-legenda {
+    margin-top: 4px;
+
+    font-size: 12px;
+
+    color: var(--texto-suave);
+}
+
+.uso-nota {
+    margin-top: 8px;
+
+    font-size: 12px;
+    line-height: 1.5;
+
+    color: var(--texto-suave);
+}
+
+.uso-nota strong {
+    color: var(--texto);
+
+    font-weight: 600;
+}
+
+.overlay-uso {
+    z-index: 16;
+}
+
+
+/* ================================
+   RESPONSIVIDADE — PAINEL DE USO
+================================ */
+
+@media (max-width: 800px) {
+
+    .painel-uso,
+    body.uso-fechada .painel-uso {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        z-index: 21;
+
+        margin-right: 0;
+
+        transform: translateX(100%);
+
+        transition: transform 0.25s ease;
+    }
+
+    body.uso-aberta .painel-uso {
+        transform: none;
+    }
+
+    body.uso-aberta .overlay-uso {
+        display: block;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .painel-uso {
+        transition: none;
+    }
+
+    .uso-barra {
+        transition: none;
+    }
+}

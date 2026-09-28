@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,6 +36,7 @@
         </aside>
 
         <div class="overlay" id="overlay"></div>
+        <div class="overlay overlay-uso" id="overlay-uso"></div>
 
         <!-- ================================
              CHAT
@@ -43,8 +45,9 @@
 
             <header class="chat-header">
                 <button id="menu" class="btn-icone" type="button" aria-label="Abrir ou fechar o histórico">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-                        <path d="M3 5h14M3 10h14M3 15h14"/>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+                        stroke-linecap="round" aria-hidden="true">
+                        <path d="M3 5h14M3 10h14M3 15h14" />
                     </svg>
                 </button>
 
@@ -52,6 +55,13 @@
                     <h1>PYXIE</h1>
                     <p>Sua assistente pessoal</p>
                 </div>
+
+                <button id="uso-toggle" class="btn-icone" type="button" aria-label="Abrir ou fechar o uso da API">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 20h18M6 20V10M12 20V4M18 20v-7" />
+                    </svg>
+                </button>
             </header>
 
             <main id="chat"></main>
@@ -64,35 +74,38 @@
                 <div id="previa" class="previa" hidden>
                     <div class="previa-item">
                         <img id="previa-img" alt="Imagem anexada">
-                        <button id="previa-remover" class="previa-remover" type="button" aria-label="Remover imagem">×</button>
+                        <button id="previa-remover" class="previa-remover" type="button"
+                            aria-label="Remover imagem">×</button>
                     </div>
                 </div>
 
                 <div class="input-box">
 
-                    <button id="anexar" class="btn-input" type="button" aria-label="Anexar imagem" title="Anexar imagem">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                    <button id="anexar" class="btn-input" type="button" aria-label="Anexar imagem"
+                        title="Anexar imagem">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path
+                                d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                         </svg>
                     </button>
 
-                    <button id="camera" class="btn-input" type="button" aria-label="Tirar foto com a câmera" title="Tirar foto">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                            <circle cx="12" cy="13" r="4"/>
+                    <button id="camera" class="btn-input" type="button" aria-label="Tirar foto com a câmera"
+                        title="Tirar foto">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path
+                                d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                            <circle cx="12" cy="13" r="4" />
                         </svg>
                     </button>
 
-                    <input
-                        type="text"
-                        id="mensagem"
-                        placeholder="Digite sua mensagem..."
-                        autocomplete="off"
-                    >
+                    <input type="text" id="mensagem" placeholder="Digite sua mensagem..." autocomplete="off">
 
                     <button id="enviar" type="button" aria-label="Enviar mensagem">
-                        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M10 16V4M4.5 9.5 10 4l5.5 5.5"/>
+                        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M10 16V4M4.5 9.5 10 4l5.5 5.5" />
                         </svg>
                     </button>
 
@@ -105,6 +118,52 @@
             </footer>
 
         </div>
+
+        <!-- ================================
+             USO DA API (GROQ)
+        ================================ -->
+        <aside class="painel-uso" id="painel-uso" aria-label="Uso da API">
+
+            <div class="uso-cabecalho">
+                <h2>Uso da API</h2>
+            </div>
+
+            <div id="uso-vazio" class="uso-vazio">
+                Ainda não há dados de uso nesta sessão do servidor. Envie uma mensagem para ver os números.
+            </div>
+
+            <div id="uso-conteudo" class="uso-conteudo" hidden>
+
+                <div class="uso-bloco">
+                    <div class="uso-bloco-topo">
+                        <span>Tokens (por minuto)</span>
+                        <span id="uso-tokens-texto">—</span>
+                    </div>
+                    <div class="uso-barra-fundo">
+                        <div id="uso-tokens-barra" class="uso-barra"></div>
+                    </div>
+                    <div id="uso-tokens-reset" class="uso-legenda"></div>
+                </div>
+
+                <div class="uso-bloco">
+                    <div class="uso-bloco-topo">
+                        <span>Pedidos (por dia)</span>
+                        <span id="uso-pedidos-texto">—</span>
+                    </div>
+                    <div class="uso-barra-fundo">
+                        <div id="uso-pedidos-barra" class="uso-barra"></div>
+                    </div>
+                </div>
+
+                <p class="uso-nota">
+                    Referente ao modelo <strong id="uso-modelo">—</strong> (o último usado).
+                    Cada modelo tem seu próprio limite — tokens resetam a cada minuto,
+                    pedidos resetam por dia.
+                </p>
+
+            </div>
+
+        </aside>
 
     </div>
 
@@ -130,4 +189,5 @@
     <script src="script.js"></script>
 
 </body>
+
 </html>

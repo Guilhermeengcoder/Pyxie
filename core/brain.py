@@ -3,6 +3,7 @@
 # =============================================================
 
 import ast
+import re
 import random
 import unicodedata
 from datetime import datetime
@@ -12,8 +13,7 @@ from core.multi_task import dividir_tarefas, tem_multiplas_tarefas
 from core.module_loader import carregar_modulos
 from core.identity import obter_nome, obter_criador, obter_usuario, apresentar
 from core.personality import Personality
-from core.internet import buscar_web
-from core.knowledge import buscar_conhecimento, aprender
+from core.knowledge import buscar_conhecimento
 from core.reminder import adicionar, listar
 from core.context import Context
 from core.language_pipeline import LanguagePipeline
@@ -23,7 +23,7 @@ from core.memory.short_term import ShortTermMemory
 from core.llm import perguntar_llm, perguntar_llm_imagem
 
 
-from core.memory.LTM import (
+from futuro.LTM import (
     extrair_e_salvar,
     gerar_contexto_para_prompt,
     salvar_permanente,
@@ -80,6 +80,36 @@ def extrair_pergunta(texto):
     partes = texto.split(",", 1)
     if len(partes) > 1:
         return partes[1].strip()
+    return None
+
+
+def detectar_nome_apresentado(mensagem: str):
+    """
+    Procura uma apresentação do tipo "meu nome é X" / "me chamo X" /
+    "pode me chamar de X" / "eu sou o/a X" na mensagem ORIGINAL da
+    pessoa que está falando agora.
+
+    Existe porque a PYXIE tem um usuário principal fixo (Guilherme, via
+    obter_usuario()), mas outras pessoas também podem conversar com ela —
+    e nesse caso a saudação não pode chamar todo mundo de "Guilherme".
+
+    Retorna o nome (ex.: "Caio") ou None se ninguém se apresentou.
+    """
+    msg = mensagem.lower()
+
+    padroes = [
+        r"meu nome (?:e|é|eh)\s+([a-zà-ÿ]+)",
+        r"pode me chamar de\s+([a-zà-ÿ]+)",
+        r"me chamo\s+([a-zà-ÿ]+)",
+        r"(?:eu\s+)?sou o\s+([a-zà-ÿ]+)",
+        r"(?:eu\s+)?sou a\s+([a-zà-ÿ]+)",
+    ]
+
+    for padrao in padroes:
+        encontrado = re.search(padrao, msg)
+        if encontrado:
+            return encontrado.group(1).capitalize()
+
     return None
 
 
@@ -142,6 +172,27 @@ class Brain:
     def register_module(self, name, module):
         self.modules[name] = module
 
+    def identificar_pessoa(self, message: str):
+        """
+        Descobre quem esta falando AGORA na conversa.
+
+        Prioridade:
+          1) nome apresentado NESTA mensagem ("meu nome e X") - se achar,
+             tambem guarda no Context para as proximas mensagens.
+          2) nome ja apresentado antes, nesta mesma conversa.
+          3) o usuario principal (Guilherme), como padrao.
+
+        Isso resolve o caso de "oi?" sozinho, depois que alguem ja se
+        apresentou, continuar reconhecendo a pessoa certa.
+        """
+        nome = detectar_nome_apresentado(message)
+
+        if nome:
+            self.context.set_pessoa(nome)
+            return nome
+
+        return self.context.get_pessoa() or obter_usuario()
+
     # ----------------------------------------------------------
     # TROCA DE CONVERSA — chamado pela API antes de process()
     # ----------------------------------------------------------
@@ -172,7 +223,7 @@ class Brain:
             self.stm = ShortTermMemory()
             self.context = Context()
 
-            for m in (historico or [])[-6:]:
+            for m in (historico or [])[30:]:
                 if m.get("role") in ("user", "assistant") and m.get("content"):
                     self.stm.add_message(m["role"], m["content"])
 
@@ -217,7 +268,7 @@ class Brain:
 
         # Histórico curto da conversa (a imagem em si não fica salva na memória)
         historico = ""
-        for m in self.stm.get_context_seletivo(max_chars=1200):
+        for m in self.stm.get_context_seletivo(max_chars=4000):
             if m["role"] == "system":
                 historico += m["content"] + "\n\n"
             elif m["role"] == "user":
@@ -302,41 +353,50 @@ class Brain:
             except Exception:
                 agora = datetime.now()
 
-            resposta = (
-                f"Bom dia, {obter_usuario()}. Hoje é {agora.strftime('%d/%m/%Y')}."
-            )
+            nome = self.identificar_pessoa(message)
             pergunta = extrair_pergunta(message)
 
             if pergunta:
-                resposta_ia = perguntar_llm(pergunta, "")
-                if resposta_ia:
-                    resposta += " " + resposta_ia
+                # Manda a frase inteira: a IA cumprimenta sozinha, usando o
+                # nome certo — evita "Bom dia, Guilherme. Oi Caio, ..." duplicado.
+                contexto = (
+                    f"(Contexto: é de manhã, hoje é {agora.strftime('%d/%m/%Y')}.)"
+                )
+                resposta_ia = perguntar_llm(f"{message} {contexto}", "")
+                resposta = (
+                    resposta_ia
+                    or f"Bom dia, {nome}. Hoje é {agora.strftime('%d/%m/%Y')}."
+                )
+            else:
+                resposta = f"Bom dia, {nome}. Hoje é {agora.strftime('%d/%m/%Y')}."
 
             resposta_final = self.personality.aplicar(resposta)
             self._finalizar(message, resposta_final)
             return resposta_final
 
         if original_message.startswith("boa tarde"):
-            resposta = f"Boa tarde, {obter_usuario()}."
+            nome = self.identificar_pessoa(message)
             pergunta = extrair_pergunta(message)
 
             if pergunta:
-                resposta_ia = perguntar_llm(pergunta, "")
-                if resposta_ia:
-                    resposta += " " + resposta_ia
+                resposta_ia = perguntar_llm(message, "")
+                resposta = resposta_ia or f"Boa tarde, {nome}."
+            else:
+                resposta = f"Boa tarde, {nome}."
 
             resposta_final = self.personality.aplicar(resposta)
             self._finalizar(message, resposta_final)
             return resposta_final
 
         if original_message.startswith("boa noite"):
-            resposta = f"Boa noite, {obter_usuario()}."
+            nome = self.identificar_pessoa(message)
             pergunta = extrair_pergunta(message)
 
             if pergunta:
-                resposta_ia = perguntar_llm(pergunta, "")
-                if resposta_ia:
-                    resposta += " " + resposta_ia
+                resposta_ia = perguntar_llm(message, "")
+                resposta = resposta_ia or f"Boa noite, {nome}."
+            else:
+                resposta = f"Boa noite, {nome}."
 
             resposta_final = self.personality.aplicar(resposta)
             self._finalizar(message, resposta_final)
@@ -382,12 +442,23 @@ class Brain:
         # --------------------------------------------------
 
         if modulo == "saudacao":
-            respostas = [
-                f"Oi, {obter_usuario()}.",
-                f"Olá, {obter_usuario()}.",
-                f"E aí, {obter_usuario()}.",
-            ]
-            resposta_final = self.personality.aplicar(random.choice(respostas))
+            nome = self.identificar_pessoa(message)
+            pergunta = extrair_pergunta(message)
+
+            if pergunta:
+                # Tem mais coisa na frase alem do "oi" (ex.: "oi, meu nome e caio").
+                # Manda a frase inteira pra IA: ela cumprimenta e responde ao
+                # mesmo tempo, usando o nome certo, sem resposta duplicada.
+                resposta_ia = perguntar_llm(message, "")
+                resposta = resposta_ia or random.choice(
+                    [f"Oi, {nome}.", f"Olá, {nome}.", f"E aí, {nome}."]
+                )
+            else:
+                resposta = random.choice(
+                    [f"Oi, {nome}.", f"Olá, {nome}.", f"E aí, {nome}."]
+                )
+
+            resposta_final = self.personality.aplicar(resposta)
             self._finalizar(message, resposta_final)
             return resposta_final
 
@@ -424,29 +495,6 @@ class Brain:
 
             resposta_final = self.personality.aplicar(
                 "Não consegui calcular essa conta."
-            )
-            self._finalizar(message, resposta_final)
-            return resposta_final
-
-        if modulo in ("internet", "internet_explicita", "pesquisa"):
-            pergunta = limpar_pergunta(original_message)
-
-            if len(pergunta.split()) >= 2:
-                self.context.set_entity(pergunta)
-
-            self.context.update_topic(pergunta)
-            query = melhorar_query(pergunta, self.context)
-            response = buscar_web(query)
-
-            if response:
-                aprender(processed_message, response)
-                extrair_e_salvar(message, topico=pergunta)
-                resposta_final = self.personality.aplicar(response)
-                self._finalizar(message, resposta_final)
-                return resposta_final
-
-            resposta_final = self.personality.aplicar(
-                "Tive dificuldade para acessar a internet agora."
             )
             self._finalizar(message, resposta_final)
             return resposta_final
