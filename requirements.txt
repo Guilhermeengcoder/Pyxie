@@ -8,6 +8,7 @@ uvicorn
 pydantic
 groq
 python-dotenv
+google-genai
 
 # HTTP
 requests
