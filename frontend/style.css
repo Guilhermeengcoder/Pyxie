@@ -268,8 +268,6 @@ body.sidebar-fechada .sidebar {
 
 /* ================================
    CABEÇALHO
-   Menu e compartilhamento à esquerda,
-   título centralizado e uso da API à direita.
 ================================ */
 
 .chat-header {
@@ -379,16 +377,16 @@ body.sidebar-fechada .sidebar {
 }
 
 .pyxie-message .acoes {
-    margin-top: 6px;
+    margin-top: 8px;
 
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 
     opacity: 0;
 
-    transition: opacity 0.15s;
+    transition: opacity 0.15s ease;
 }
 
 .pyxie-message:hover .acoes,
@@ -396,11 +394,17 @@ body.sidebar-fechada .sidebar {
     opacity: 1;
 }
 
+/* Estilo base dos botões de ação */
 .copy-button {
-    padding: 4px 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+
+    padding: 6px 8px;
 
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
 
     background: transparent;
 
@@ -410,19 +414,87 @@ body.sidebar-fechada .sidebar {
 
     cursor: pointer;
 
-    transition: background 0.15s, color 0.15s;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        transform 0.15s ease;
 }
 
-.copy-button:hover {
+/* Botões de copiar, regenerar e compartilhar */
+.message-action-button {
+    flex-shrink: 0;
+
+    width: 34px;
+    height: 34px;
+
+    padding: 0;
+
+    border: 1px solid transparent;
+    border-radius: 9px;
+
+    background: transparent;
+
+    color: var(--texto-suave);
+
+    opacity: 0.85;
+
+    cursor: pointer;
+
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease,
+        opacity 0.15s ease,
+        transform 0.15s ease;
+}
+
+/* Ícones SVG inseridos pelo JavaScript */
+.icone-acao {
+    display: block;
+
+    width: 17px;
+    height: 17px;
+
+    flex-shrink: 0;
+
+    stroke: currentColor;
+}
+
+/* Hover dos botões de ação */
+.copy-button:hover,
+.message-action-button:hover {
     background: var(--bg-hover);
     color: var(--texto);
+}
+
+.message-action-button:hover {
+    border-color: var(--borda);
+    opacity: 1;
+
+    transform: translateY(-1px);
+}
+
+/* Clique */
+.message-action-button:active {
+    transform: scale(0.94);
+}
+
+/* Foco por teclado */
+.message-action-button:focus-visible {
+    outline: 2px solid #d14b4b;
+    outline-offset: 2px;
+
+    opacity: 1;
+}
+
+/* Evita que o estado de foco seja escondido */
+.pyxie-message:focus-within .acoes {
+    opacity: 1;
 }
 
 
 /* ================================
    BLOCOS DE CÓDIGO
-   Preparado para a renderização
-   segura dos blocos pelo script.js.
 ================================ */
 
 .code-block {
@@ -733,7 +805,11 @@ body.sidebar-fechada .sidebar {
 @media (hover: none) {
 
     .pyxie-message .acoes {
-        opacity: 0.8;
+        opacity: 1;
+    }
+
+    .message-action-button {
+        opacity: 1;
     }
 
     .item-apagar {
@@ -787,6 +863,15 @@ body.sidebar-fechada .sidebar {
         font-size: 12px;
         padding: 12px;
     }
+
+    .pyxie-message .acoes {
+        gap: 5px;
+    }
+
+    .message-action-button {
+        width: 36px;
+        height: 36px;
+    }
 }
 
 
@@ -803,6 +888,12 @@ body.sidebar-fechada .sidebar {
     .digitando span {
         animation: none;
         opacity: 0.6;
+    }
+
+    .pyxie-message .acoes,
+    .copy-button,
+    .message-action-button {
+        transition: none;
     }
 }
 
@@ -918,7 +1009,7 @@ body.sidebar-fechada .sidebar {
     border-radius: 12px;
 }
 
-.user-message .anexo+div {
+.user-message .anexo + div {
     margin-top: 8px;
 }
 

@@ -371,6 +371,120 @@ async function copiarTexto(texto) {
 
 
 // ========================================
+// ÍCONES DAS AÇÕES DAS RESPOSTAS
+// ========================================
+
+// Cria SVGs diretamente pelo JavaScript, sem bibliotecas externas
+// e sem inserir HTML recebido da IA.
+function criarIcone(nome) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "18");
+    svg.setAttribute("height", "18");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    svg.classList.add("icone-acao");
+
+    const criarElemento = (tipo, atributos) => {
+        const elemento = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            tipo
+        );
+
+        Object.entries(atributos).forEach(([chave, valor]) => {
+            elemento.setAttribute(chave, valor);
+        });
+
+        return elemento;
+    };
+
+    if (nome === "copiar") {
+        svg.append(
+            criarElemento("rect", {
+                x: "8",
+                y: "8",
+                width: "13",
+                height: "13",
+                rx: "2"
+            }),
+            criarElemento("path", {
+                d: "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"
+            })
+        );
+    }
+
+    if (nome === "regenerar") {
+        svg.append(
+            criarElemento("path", {
+                d: "M20 7v5h-5"
+            }),
+            criarElemento("path", {
+                d: "M4 17v-5h5"
+            }),
+            criarElemento("path", {
+                d: "M5.5 9a7 7 0 0 1 11.6-2.6L20 12"
+            }),
+            criarElemento("path", {
+                d: "M4 12l2.9 5.6A7 7 0 0 0 18.5 15"
+            })
+        );
+    }
+
+    if (nome === "compartilhar") {
+        svg.append(
+            criarElemento("circle", {
+                cx: "18",
+                cy: "5",
+                r: "3"
+            }),
+            criarElemento("circle", {
+                cx: "6",
+                cy: "12",
+                r: "3"
+            }),
+            criarElemento("circle", {
+                cx: "18",
+                cy: "19",
+                r: "3"
+            }),
+            criarElemento("path", {
+                d: "m8.7 10.5 6.6-4"
+            }),
+            criarElemento("path", {
+                d: "m8.7 13.5 6.6 4"
+            })
+        );
+    }
+
+    return svg;
+}
+
+// Botão somente com ícone, mantendo nome acessível e dica ao passar o mouse.
+function criarBotaoAcao(nomeIcone, descricao, classeAdicional = "") {
+    const botaoAcao = document.createElement("button");
+
+    botaoAcao.type = "button";
+    botaoAcao.classList.add("copy-button", "message-action-button");
+
+    if (classeAdicional) {
+        botaoAcao.classList.add(classeAdicional);
+    }
+
+    botaoAcao.setAttribute("aria-label", descricao);
+    botaoAcao.title = descricao;
+
+    botaoAcao.appendChild(criarIcone(nomeIcone));
+
+    return botaoAcao;
+}
+
+
+// ========================================
 // BLOCOS DE CÓDIGO NAS RESPOSTAS
 // ========================================
 
@@ -525,22 +639,21 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
         const acoes = document.createElement("div");
         acoes.classList.add("acoes");
 
-        // Copiar resposta inteira
-        const copiar = document.createElement("button");
-
-        copiar.type = "button";
-        copiar.textContent = "Copiar";
-        copiar.title = "Copiar resposta";
-        copiar.classList.add("copy-button");
+        // Copiar a resposta inteira
+        const copiar = criarBotaoAcao("copiar", "Copiar resposta");
 
         copiar.addEventListener("click", async () => {
             try {
                 await copiarTexto(String(texto ?? ""));
 
-                copiar.textContent = "Copiado";
+                copiar.title = "Resposta copiada";
+                copiar.setAttribute("aria-label", "Resposta copiada");
+
+                mostrarAviso("Resposta copiada!");
 
                 setTimeout(() => {
-                    copiar.textContent = "Copiar";
+                    copiar.title = "Copiar resposta";
+                    copiar.setAttribute("aria-label", "Copiar resposta");
                 }, 1500);
             } catch (erro) {
                 console.error("Não foi possível copiar:", erro);
@@ -550,14 +663,13 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
 
         acoes.appendChild(copiar);
 
-        // Só a última resposta salva recebe o botão de regeneração.
+        // Regenerar somente quando esta for a última resposta salva.
         if (opcoes.permitirRegenerar === true && opcoes.conversaId) {
-            const regenerar = document.createElement("button");
-
-            regenerar.type = "button";
-            regenerar.textContent = "Regenerar";
-            regenerar.title = "Gerar outra resposta para a última pergunta";
-            regenerar.classList.add("copy-button", "regenerate-button");
+            const regenerar = criarBotaoAcao(
+                "regenerar",
+                "Gerar outra resposta",
+                "regenerate-button"
+            );
 
             regenerar.addEventListener("click", () => {
                 regenerarResposta(opcoes.conversaId);
@@ -565,6 +677,20 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
 
             acoes.appendChild(regenerar);
         }
+
+// Compartilhar esta resposta em redes sociais e aplicativos.
+if (opcoes.conversaId) {
+    const compartilhar = criarBotaoAcao(
+        "compartilhar",
+        "Compartilhar resposta"
+    );
+
+    compartilhar.addEventListener("click", () => {
+        abrirMenuCompartilhamento(String(texto ?? ""));
+    });
+
+    acoes.appendChild(compartilhar);
+}
 
         mensagem.appendChild(textoMensagem);
         mensagem.appendChild(acoes);
@@ -602,7 +728,7 @@ function renderizarMensagens() {
 
         desenharMensagem(m.texto, m.tipo, m.miniatura, {
             permitirRegenerar: permitirRegenerar,
-            conversaId: permitirRegenerar ? conversa.id : null
+            conversaId: m.tipo === "pyxie" ? conversa.id : null
         });
     });
 
@@ -727,145 +853,378 @@ async function regenerarResposta(conversaId) {
     }
 }
 
-
 // ========================================
-// COMPARTILHAR / COPIAR CONVERSA
+// COMPARTILHAMENTO DE RESPOSTAS
 // ========================================
 
-function formatarConversaParaCompartilhar(conversa) {
-    const linhas = [
-        "PYXIE",
-        `Conversa: ${conversa.titulo || "Sem título"}`,
-        ""
-    ];
+function fecharMenuCompartilhamento() {
+    const menu = document.getElementById("menu-compartilhamento-pyxie");
 
-    conversa.mensagens.forEach(mensagem => {
-        const ehUsuario = mensagem.tipo === "usuario";
-        const autor = ehUsuario ? "Você" : "PYXIE";
-        const texto = (mensagem.texto || "").trim();
+    if (menu) {
+        menu.remove();
+    }
 
-        linhas.push(`${autor}:`);
+    document.removeEventListener(
+        "keydown",
+        tratarTeclaMenuCompartilhamento
+    );
+}
 
-        if (texto) {
-            linhas.push(texto);
-        }
+function tratarTeclaMenuCompartilhamento(event) {
+    if (event.key === "Escape") {
+        fecharMenuCompartilhamento();
+    }
+}
 
-        if (mensagem.miniatura && !texto) {
-            linhas.push("[imagem enviada]");
-        } else if (mensagem.miniatura && texto) {
-            linhas.push("[mensagem com imagem anexada]");
-        }
+function criarOpcaoCompartilhamento({
+    nome,
+    descricao,
+    icone,
+    cor,
+    acao
+}) {
+    const botaoOpcao = document.createElement("button");
 
-        linhas.push("");
+    botaoOpcao.type = "button";
+    botaoOpcao.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #2a2a2a;
+        border-radius: 10px;
+        background: #111;
+        color: #ececec;
+        text-align: left;
+        cursor: pointer;
+        font: inherit;
+        transition: background .15s, border-color .15s;
+    `;
+
+    botaoOpcao.addEventListener("mouseenter", () => {
+        botaoOpcao.style.background = "#202020";
+        botaoOpcao.style.borderColor = "#444";
     });
 
-    return linhas.join("\n").trim();
+    botaoOpcao.addEventListener("mouseleave", () => {
+        botaoOpcao.style.background = "#111";
+        botaoOpcao.style.borderColor = "#2a2a2a";
+    });
+
+    const simbolo = document.createElement("span");
+
+    simbolo.textContent = icone;
+    simbolo.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        flex-shrink: 0;
+        border-radius: 10px;
+        background: ${cor};
+        color: white;
+        font-size: 18px;
+        font-weight: 700;
+    `;
+
+    const textos = document.createElement("span");
+
+    textos.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+    `;
+
+    const titulo = document.createElement("strong");
+    titulo.textContent = nome;
+    titulo.style.cssText = "font-size: 14px; font-weight: 600;";
+
+    const subtitulo = document.createElement("span");
+    subtitulo.textContent = descricao;
+    subtitulo.style.cssText = `
+        color: #999;
+        font-size: 12px;
+        line-height: 1.4;
+    `;
+
+    textos.append(titulo, subtitulo);
+    botaoOpcao.append(simbolo, textos);
+
+    botaoOpcao.addEventListener("click", () => {
+        fecharMenuCompartilhamento();
+        acao();
+    });
+
+    return botaoOpcao;
 }
 
-async function compartilharConversa() {
-    const conversa = conversaAtiva();
+function abrirDestinoCompartilhamento(url) {
+    const novaJanela = window.open(
+        url,
+        "_blank",
+        "noopener,noreferrer"
+    );
 
-    if (!conversa || conversa.mensagens.length === 0) {
-        mostrarAviso("Esta conversa ainda não tem mensagens para copiar.");
+    if (!novaJanela) {
+        mostrarAviso(
+            "O navegador bloqueou a janela. Permita pop-ups para este site e tente novamente."
+        );
+    }
+}
+
+async function compartilharTextoNativo(texto) {
+    if (typeof navigator.share !== "function") {
+        mostrarAviso(
+            "O compartilhamento do dispositivo não está disponível neste navegador. Escolha WhatsApp ou Telegram, ou copie o texto."
+        );
         return;
     }
-
-    const conteudo = formatarConversaParaCompartilhar(conversa);
 
     try {
-        await copiarTexto(conteudo);
-        mostrarAviso("Conversa copiada! Agora você pode colá-la onde quiser.");
+        await navigator.share({
+            title: "Resposta da PYXIE",
+            text: texto
+        });
     } catch (erro) {
-        console.error("Não foi possível copiar a conversa:", erro);
-        mostrarAviso("Não foi possível copiar a conversa neste navegador.");
+        // O usuário pode fechar o menu nativo sem compartilhar.
+        if (erro.name !== "AbortError") {
+            console.error("Erro no compartilhamento:", erro);
+            mostrarAviso("Não foi possível abrir o compartilhamento.");
+        }
     }
 }
 
-
-// ========================================
-// BOTÃO DE COMPARTILHAR
-// ========================================
-
-// Se o botão já existir no HTML, ele será reutilizado.
-// Caso contrário, é criado aqui para não exigir alteração no index.html.
-function configurarBotaoCompartilhar() {
-    let botaoCompartilhar = document.getElementById("compartilhar-conversa");
-
-    if (botaoCompartilhar) {
-        botaoCompartilhar.addEventListener("click", compartilharConversa);
-        return;
+async function copiarTextoCompartilhamento(texto) {
+    try {
+        await copiarTexto(texto);
+        mostrarAviso("Resposta copiada!");
+    } catch (erro) {
+        console.error("Erro ao copiar resposta:", erro);
+        mostrarAviso("Não foi possível copiar a resposta.");
     }
-
-    const cabecalho = document.querySelector(".chat-header");
-
-    if (!cabecalho) {
-        console.warn("Não encontrei o cabeçalho para adicionar o botão de compartilhar.");
-        return;
-    }
-
-    botaoCompartilhar = document.createElement("button");
-
-    botaoCompartilhar.type = "button";
-    botaoCompartilhar.id = "compartilhar-conversa";
-    botaoCompartilhar.classList.add("btn-icone");
-    botaoCompartilhar.title = "Copiar conversa atual";
-    botaoCompartilhar.setAttribute("aria-label", "Copiar conversa atual");
-
-    // Ícone de compartilhar criado sem inserir HTML externo.
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("width", "20");
-    svg.setAttribute("height", "20");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "2");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    svg.setAttribute("aria-hidden", "true");
-
-    const circulo1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circulo1.setAttribute("cx", "18");
-    circulo1.setAttribute("cy", "5");
-    circulo1.setAttribute("r", "3");
-
-    const circulo2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circulo2.setAttribute("cx", "6");
-    circulo2.setAttribute("cy", "12");
-    circulo2.setAttribute("r", "3");
-
-    const circulo3 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circulo3.setAttribute("cx", "18");
-    circulo3.setAttribute("cy", "19");
-    circulo3.setAttribute("r", "3");
-
-    const linha1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    linha1.setAttribute("x1", "8.6");
-    linha1.setAttribute("y1", "10.5");
-    linha1.setAttribute("x2", "15.4");
-    linha1.setAttribute("y2", "6.5");
-
-    const linha2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    linha2.setAttribute("x1", "8.6");
-    linha2.setAttribute("y1", "13.5");
-    linha2.setAttribute("x2", "15.4");
-    linha2.setAttribute("y2", "17.5");
-
-    svg.append(circulo1, circulo2, circulo3, linha1, linha2);
-    botaoCompartilhar.appendChild(svg);
-
-    // Posicionamento independente da grade original do cabeçalho.
-    cabecalho.style.position = cabecalho.style.position || "relative";
-    botaoCompartilhar.style.position = "absolute";
-    botaoCompartilhar.style.right = "52px";
-    botaoCompartilhar.style.top = "50%";
-    botaoCompartilhar.style.transform = "translateY(-50%)";
-    botaoCompartilhar.style.zIndex = "2";
-
-    cabecalho.appendChild(botaoCompartilhar);
-
-    botaoCompartilhar.addEventListener("click", compartilharConversa);
 }
 
+function abrirMenuCompartilhamento(texto) {
+    fecharMenuCompartilhamento();
+
+    const conteudo = String(texto || "").trim();
+
+    if (!conteudo) {
+        mostrarAviso("Não há conteúdo para compartilhar.");
+        return;
+    }
+
+    const overlayMenu = document.createElement("div");
+    overlayMenu.id = "menu-compartilhamento-pyxie";
+
+    overlayMenu.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(0, 0, 0, .75);
+        backdrop-filter: blur(4px);
+    `;
+
+    const painel = document.createElement("div");
+
+    painel.setAttribute("role", "dialog");
+    painel.setAttribute("aria-modal", "true");
+    painel.setAttribute("aria-labelledby", "titulo-compartilhamento-pyxie");
+
+    painel.style.cssText = `
+        width: 100%;
+        max-width: 420px;
+        max-height: 85vh;
+        overflow-y: auto;
+        padding: 20px;
+        border: 1px solid #333;
+        border-radius: 16px;
+        background: #080808;
+        color: #ececec;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+    `;
+
+    const cabecalho = document.createElement("div");
+
+    cabecalho.style.cssText = `
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+    `;
+
+    const titulo = document.createElement("h2");
+    titulo.id = "titulo-compartilhamento-pyxie";
+    titulo.textContent = "Compartilhar resposta";
+    titulo.style.cssText = "font-size: 19px; font-weight: 650;";
+
+    const fechar = document.createElement("button");
+
+    fechar.type = "button";
+    fechar.textContent = "×";
+    fechar.title = "Fechar";
+    fechar.setAttribute("aria-label", "Fechar compartilhamento");
+
+    fechar.style.cssText = `
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: #aaa;
+        font-size: 25px;
+        cursor: pointer;
+    `;
+
+    fechar.addEventListener("click", fecharMenuCompartilhamento);
+
+    cabecalho.append(titulo, fechar);
+
+    const descricao = document.createElement("p");
+    descricao.textContent = "Escolha onde deseja enviar o texto.";
+    descricao.style.cssText = `
+        margin-bottom: 16px;
+        color: #999;
+        font-size: 13px;
+        line-height: 1.5;
+    `;
+
+    const opcoes = document.createElement("div");
+
+    opcoes.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    `;
+
+    // WhatsApp: abre a seleção de contatos com o texto preparado.
+    opcoes.appendChild(criarOpcaoCompartilhamento({
+        nome: "WhatsApp",
+        descricao: "Enviar para um contato ou grupo",
+        icone: "W",
+        cor: "#128C4A",
+        acao: () => {
+            const url =
+                "https://wa.me/?text=" + encodeURIComponent(conteudo);
+
+            abrirDestinoCompartilhamento(url);
+        }
+    }));
+
+    // Telegram: abre o fluxo de compartilhamento com o texto.
+    opcoes.appendChild(criarOpcaoCompartilhamento({
+        nome: "Telegram",
+        descricao: "Escolher uma conversa para enviar",
+        icone: "➤",
+        cor: "#229ED9",
+        acao: () => {
+            const url =
+                "https://t.me/share/url?url=&text=" +
+                encodeURIComponent(conteudo);
+
+            abrirDestinoCompartilhamento(url);
+        }
+    }));
+
+    // LinkedIn: o compartilhamento web oficial exige um URL.
+    // Não existe um parâmetro universal para preencher uma publicação
+    // apenas com texto. Por isso, copiamos o texto e abrimos o LinkedIn.
+    opcoes.appendChild(criarOpcaoCompartilhamento({
+        nome: "LinkedIn",
+        descricao: "Copiar o texto e abrir o LinkedIn",
+        icone: "in",
+        cor: "#0A66C2",
+        acao: async () => {
+            try {
+                await copiarTexto(conteudo);
+                abrirDestinoCompartilhamento(
+                    "https://www.linkedin.com/feed/"
+                );
+                mostrarAviso(
+                    "Texto copiado. No LinkedIn, cole-o em uma publicação."
+                );
+            } catch (erro) {
+                mostrarAviso(
+                    "Não foi possível copiar o texto para o LinkedIn."
+                );
+            }
+        }
+    }));
+
+    // Reddit: abre o formulário de publicação com título e texto.
+    opcoes.appendChild(criarOpcaoCompartilhamento({
+        nome: "Reddit",
+        descricao: "Preparar uma publicação de texto",
+        icone: "r/",
+        cor: "#FF4500",
+        acao: () => {
+            const primeiraLinha = conteudo
+                .split("\n")
+                .map(linha => linha.trim())
+                .find(Boolean) || "Resposta da PYXIE";
+
+            const tituloReddit = primeiraLinha.length > 200
+                ? primeiraLinha.slice(0, 197) + "..."
+                : primeiraLinha;
+
+            const parametros = new URLSearchParams({
+                type: "TEXT",
+                title: tituloReddit,
+                text: conteudo
+            });
+
+            abrirDestinoCompartilhamento(
+                "https://www.reddit.com/submit?" + parametros.toString()
+            );
+        }
+    }));
+
+    // O Instagram não permite preencher qualquer chat com texto
+    // por um link web universal. O menu nativo pode oferecer o app
+    // se o sistema e o navegador permitirem.
+    opcoes.appendChild(criarOpcaoCompartilhamento({
+        nome: "Instagram e outros aplicativos",
+        descricao: "Abrir o menu de compartilhamento do dispositivo",
+        icone: "↗",
+        cor: "#C13584",
+        acao: () => compartilharTextoNativo(conteudo)
+    }));
+
+    opcoes.appendChild(criarOpcaoCompartilhamento({
+        nome: "Copiar texto",
+        descricao: "Copiar a resposta para colar onde quiser",
+        icone: "▢",
+        cor: "#333333",
+        acao: () => copiarTextoCompartilhamento(conteudo)
+    }));
+
+    painel.append(cabecalho, descricao, opcoes);
+    overlayMenu.appendChild(painel);
+
+    overlayMenu.addEventListener("click", event => {
+        if (event.target === overlayMenu) {
+            fecharMenuCompartilhamento();
+        }
+    });
+
+    document.body.appendChild(overlayMenu);
+
+    document.addEventListener(
+        "keydown",
+        tratarTeclaMenuCompartilhamento
+    );
+
+    fechar.focus();
+}
 
 // ========================================
 // INDICADOR DE PROCESSAMENTO
@@ -1534,9 +1893,6 @@ botaoLimpar.addEventListener("click", () => {
 botaoMenu.addEventListener("click", alternarSidebar);
 
 overlay.addEventListener("click", fecharSidebarNoCelular);
-
-// Cria ou conecta o botão de copiar/compartilhar conversa.
-configurarBotaoCompartilhar();
 
 
 // ========================================

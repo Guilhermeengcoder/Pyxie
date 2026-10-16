@@ -39,8 +39,6 @@ def perguntar(pergunta: Pergunta):
     if not pergunta.mensagem.strip() and not pergunta.imagem:
         raise HTTPException(status_code=400, detail="Mensagem vazia.")
 
-    usage.iniciar_requisicao()
-
     if pergunta.imagem:
         resposta = brain.processar_imagem(
             pergunta.mensagem,
