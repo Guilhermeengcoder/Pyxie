@@ -268,14 +268,18 @@ body.sidebar-fechada .sidebar {
 
 /* ================================
    CABEÇALHO
+   Menu e compartilhamento à esquerda,
+   título centralizado e uso da API à direita.
 ================================ */
 
 .chat-header {
+    position: relative;
     flex-shrink: 0;
 
-    display: grid;
-    grid-template-columns: 44px 1fr 44px;
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 
     padding: 12px 16px;
 
@@ -283,7 +287,15 @@ body.sidebar-fechada .sidebar {
 }
 
 .chat-titulo {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+
+    width: max-content;
+    max-width: calc(100% - 190px);
+
     text-align: center;
+    pointer-events: none;
 }
 
 .chat-titulo h1 {
@@ -300,6 +312,8 @@ body.sidebar-fechada .sidebar {
 }
 
 .btn-icone {
+    flex-shrink: 0;
+
     width: 40px;
     height: 40px;
 
@@ -327,11 +341,12 @@ body.sidebar-fechada .sidebar {
 
 /* ================================
    ÁREA DAS MENSAGENS
-   O padding lateral centraliza a coluna de conversa
 ================================ */
 
 #chat {
     flex: 1;
+    min-height: 0;
+    min-width: 0;
 
     padding: 28px max(16px, calc((100% - var(--largura-coluna)) / 2));
 
@@ -344,12 +359,12 @@ body.sidebar-fechada .sidebar {
 }
 
 .message {
-    line-height: 1.65;
+    min-width: 0;
 
+    line-height: 1.65;
     font-size: 15px;
 
     white-space: pre-wrap;
-
     overflow-wrap: anywhere;
 }
 
@@ -360,10 +375,16 @@ body.sidebar-fechada .sidebar {
 
 .pyxie-message {
     align-self: stretch;
+    min-width: 0;
 }
 
 .pyxie-message .acoes {
     margin-top: 6px;
+
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
 
     opacity: 0;
 
@@ -399,6 +420,130 @@ body.sidebar-fechada .sidebar {
 
 
 /* ================================
+   BLOCOS DE CÓDIGO
+   Preparado para a renderização
+   segura dos blocos pelo script.js.
+================================ */
+
+.code-block {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+
+    margin: 12px 0;
+
+    overflow: hidden;
+
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+
+    background: #0d0d0d;
+}
+
+.code-block-header {
+    min-height: 36px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    padding: 6px 10px;
+
+    border-bottom: 1px solid var(--borda);
+
+    background: #151515;
+
+    color: var(--texto-suave);
+    font-size: 12px;
+}
+
+.code-block-header span {
+    min-width: 0;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-copy-button {
+    flex-shrink: 0;
+
+    padding: 4px 8px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 6px;
+
+    background: transparent;
+
+    color: var(--texto);
+
+    font-size: 12px;
+
+    cursor: pointer;
+
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.code-copy-button:hover {
+    background: var(--bg-hover);
+    border-color: #555555;
+}
+
+.code-block pre {
+    display: block;
+
+    max-width: 100%;
+    margin: 0;
+    padding: 14px;
+
+    overflow-x: auto;
+
+    color: #e6e6e6;
+
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+
+    tab-size: 4;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+.code-block pre code {
+    display: block;
+
+    padding: 0;
+
+    border: none;
+    background: transparent;
+
+    color: inherit;
+
+    font: inherit;
+    white-space: pre;
+}
+
+.code-block pre::-webkit-scrollbar {
+    height: 7px;
+}
+
+.code-block pre::-webkit-scrollbar-track {
+    background: #111111;
+}
+
+.code-block pre::-webkit-scrollbar-thumb {
+    background: #444444;
+    border-radius: 10px;
+}
+
+.code-block pre::-webkit-scrollbar-thumb:hover {
+    background: #666666;
+}
+
+
+/* ================================
    MENSAGEM DO USUÁRIO — mantém o balão
 ================================ */
 
@@ -406,6 +551,7 @@ body.sidebar-fechada .sidebar {
     align-self: flex-end;
 
     max-width: 80%;
+    min-width: 0;
 
     padding: 12px 18px;
 
@@ -582,7 +728,6 @@ body.sidebar-fechada .sidebar {
 
 /* ================================
    TELAS SEM MOUSE (celular / tablet)
-   Sem hover, os botões precisam ficar visíveis
 ================================ */
 
 @media (hover: none) {
@@ -599,7 +744,6 @@ body.sidebar-fechada .sidebar {
 
 /* ================================
    RESPONSIVIDADE
-   No celular o histórico vira uma gaveta por cima do chat
 ================================ */
 
 @media (max-width: 800px) {
@@ -637,6 +781,11 @@ body.sidebar-fechada .sidebar {
 
     .user-message {
         max-width: 90%;
+    }
+
+    .code-block pre {
+        font-size: 12px;
+        padding: 12px;
     }
 }
 
@@ -882,7 +1031,6 @@ body.sidebar-fechada .sidebar {
 
 /* ================================
    PAINEL DE USO (GROQ)
-   Mesma linguagem visual da sidebar, só que do lado direito.
 ================================ */
 
 .painel-uso {
@@ -1037,6 +1185,26 @@ body.uso-fechada .painel-uso {
 
     body.uso-aberta .overlay-uso {
         display: block;
+    }
+
+    .chat-header {
+        padding: 10px 12px;
+        gap: 4px;
+    }
+
+    .chat-titulo {
+        max-width: calc(100% - 176px);
+    }
+
+    .chat-titulo p {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .btn-icone {
+        width: 38px;
+        height: 38px;
     }
 }
 

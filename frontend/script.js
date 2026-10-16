@@ -1,3 +1,4 @@
+
 // ========================================
 // ELEMENTOS
 // ========================================
@@ -30,6 +31,13 @@ const cameraCancelar = document.getElementById("camera-cancelar");
 const cameraVirar = document.getElementById("camera-virar");
 const cameraCapturar = document.getElementById("camera-capturar");
 
+function gerarChatId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "chat-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+}
+
+let chatId = gerarChatId(); // reload da página = chat novo
+
 
 // ========================================
 // CONFIGURAÇÕES
@@ -40,17 +48,15 @@ const CHAVE_STORAGE = "pyxie_conversas_v1";
 const SAUDACAO = "Olá! Como posso ajudar?";
 
 // Quantas mensagens anteriores vão junto a cada pedido.
-// É aqui que se controla o "custo" da memória retroativa:
-// 0 = a API só recebe a mensagem atual.
 const MENSAGENS_DE_CONTEXTO = 6;
 
 const MAX_CONVERSAS = 50;
 
 // Imagens
-const MAX_ARQUIVO_MB = 15;          // recusa arquivos maiores que isso
-const IMAGEM_LADO_MAX = 1280;       // a imagem enviada à API é reduzida a isso
+const MAX_ARQUIVO_MB = 15;
+const IMAGEM_LADO_MAX = 1280;
 const IMAGEM_QUALIDADE = 0.85;
-const MINIATURA_LADO_MAX = 320;     // miniatura guardada no histórico do navegador
+const MINIATURA_LADO_MAX = 320;
 const MINIATURA_QUALIDADE = 0.6;
 
 const PLACEHOLDER_PADRAO = input.placeholder;
@@ -62,17 +68,17 @@ const PLACEHOLDER_COM_IMAGEM = "Pergunte algo sobre a imagem (opcional)";
 // ========================================
 
 let estado = {
-    conversas: [],   // { id, titulo, criadaEm, atualizadaEm, mensagens: [{ tipo, texto, miniatura? }] }
+    conversas: [],
     ativa: null
 };
 
-// id da conversa que está aguardando resposta da API
+// ID da conversa que está aguardando resposta da API
 let pendenteId = null;
 
-// imagem anexada, ainda não enviada: { dataUrl, miniatura }
+// Imagem anexada, ainda não enviada
 let imagemPendente = null;
 
-// câmera
+// Câmera
 let streamCamera = null;
 let cameraFrontal = false;
 
@@ -84,9 +90,7 @@ let timerAviso = null;
 // ========================================
 
 function carregarEstado() {
-
     try {
-
         const bruto = localStorage.getItem(CHAVE_STORAGE);
 
         if (!bruto) {
@@ -101,24 +105,16 @@ function carregarEstado() {
                 ativa: dados.ativa || null
             };
         }
-
     } catch (erro) {
-
         console.warn("Não foi possível ler o histórico salvo:", erro);
-
     }
 }
 
 function salvarEstado() {
-
     try {
-
         localStorage.setItem(CHAVE_STORAGE, JSON.stringify(estado));
-
     } catch (erro) {
-
         console.warn("Não foi possível salvar o histórico:", erro);
-
     }
 }
 
@@ -128,27 +124,23 @@ function salvarEstado() {
 // ========================================
 
 function criarId() {
-
     if (window.crypto && typeof crypto.randomUUID === "function") {
         return crypto.randomUUID();
     }
 
-    // Fallback para acesso via http fora de localhost
+    // Fallback para acesso via HTTP fora de localhost
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
 function ordenarConversas() {
-
     estado.conversas.sort((a, b) => b.atualizadaEm - a.atualizadaEm);
 }
 
 function conversaAtiva() {
-
     return estado.conversas.find(c => c.id === estado.ativa) || null;
 }
 
 function novaConversa() {
-
     // Reaproveita uma conversa vazia em vez de empilhar várias
     const vazia = estado.conversas.find(c => c.mensagens.length === 0);
 
@@ -178,7 +170,6 @@ function novaConversa() {
 }
 
 function abrirConversa(id) {
-
     estado.ativa = id;
 
     salvarEstado();
@@ -192,15 +183,17 @@ function abrirConversa(id) {
 }
 
 function apagarConversa(id) {
-
     if (!confirm("Apagar esta conversa?")) {
         return;
     }
 
+    fetch(`/chat/${encodeURIComponent(id)}`, {
+        method: "DELETE"
+    }).catch(() => { });
+
     estado.conversas = estado.conversas.filter(c => c.id !== id);
 
     if (estado.ativa === id) {
-
         estado.ativa = null;
 
         ordenarConversas();
@@ -219,8 +212,10 @@ function apagarConversa(id) {
 }
 
 function registrarMensagem(conversa, tipo, texto, miniatura) {
-
-    const registro = { tipo: tipo, texto: texto };
+    const registro = {
+        tipo: tipo,
+        texto: texto
+    };
 
     if (miniatura) {
         registro.miniatura = miniatura;
@@ -231,7 +226,6 @@ function registrarMensagem(conversa, tipo, texto, miniatura) {
 
     // A primeira mensagem do usuário vira o título da conversa
     if (tipo === "usuario" && conversa.titulo === "Nova conversa") {
-
         const base = texto || "Imagem";
 
         conversa.titulo = base.length > 40
@@ -249,7 +243,6 @@ function registrarMensagem(conversa, tipo, texto, miniatura) {
 // ========================================
 
 function rotuloDoGrupo(timestamp) {
-
     const dia = 24 * 60 * 60 * 1000;
 
     const inicioHoje = new Date().setHours(0, 0, 0, 0);
@@ -265,7 +258,6 @@ function rotuloDoGrupo(timestamp) {
 }
 
 function renderizarLista() {
-
     ordenarConversas();
 
     lista.innerHTML = "";
@@ -273,11 +265,9 @@ function renderizarLista() {
     let grupoAtual = null;
 
     estado.conversas.forEach(conversa => {
-
         const grupo = rotuloDoGrupo(conversa.atualizadaEm);
 
         if (grupo !== grupoAtual) {
-
             grupoAtual = grupo;
 
             const titulo = document.createElement("div");
@@ -325,24 +315,167 @@ function renderizarLista() {
 
 
 // ========================================
-// SIDEBAR (abrir / fechar)
+// SIDEBAR (ABRIR / FECHAR)
 // ========================================
 
 function estaNoCelular() {
-
     return window.matchMedia("(max-width: 800px)").matches;
 }
 
 function alternarSidebar() {
-
     document.body.classList.toggle(
         estaNoCelular() ? "sidebar-aberta" : "sidebar-fechada"
     );
 }
 
 function fecharSidebarNoCelular() {
-
     document.body.classList.remove("sidebar-aberta");
+}
+
+
+// ========================================
+// CÓPIA DE TEXTO
+// ========================================
+
+// Tenta usar a Clipboard API e oferece uma alternativa para navegadores
+// que não permitem navigator.clipboard.writeText().
+async function copiarTexto(texto) {
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(texto);
+        return;
+    }
+
+    const temporario = document.createElement("textarea");
+
+    temporario.value = texto;
+    temporario.setAttribute("readonly", "");
+    temporario.style.position = "fixed";
+    temporario.style.left = "-9999px";
+    temporario.style.top = "0";
+
+    document.body.appendChild(temporario);
+    temporario.select();
+
+    let copiou = false;
+
+    try {
+        copiou = document.execCommand("copy");
+    } finally {
+        temporario.remove();
+    }
+
+    if (!copiou) {
+        throw new Error("O navegador não permitiu copiar o texto.");
+    }
+}
+
+
+// ========================================
+// BLOCOS DE CÓDIGO NAS RESPOSTAS
+// ========================================
+
+// Cria um botão de cópia para cada bloco de código.
+function criarBlocoCodigo(codigo, linguagem) {
+    const bloco = document.createElement("div");
+    bloco.classList.add("code-block");
+
+    const cabecalho = document.createElement("div");
+    cabecalho.classList.add("code-block-header");
+
+    const nomeLinguagem = document.createElement("span");
+    nomeLinguagem.classList.add("code-block-language");
+    nomeLinguagem.textContent = linguagem || "código";
+
+    const copiar = document.createElement("button");
+    copiar.type = "button";
+    copiar.classList.add("copy-button", "code-copy-button");
+    copiar.textContent = "Copiar código";
+    copiar.title = "Copiar este bloco de código";
+
+    copiar.addEventListener("click", async () => {
+        try {
+            await copiarTexto(codigo);
+
+            copiar.textContent = "Copiado!";
+
+            setTimeout(() => {
+                copiar.textContent = "Copiar código";
+            }, 1500);
+        } catch (erro) {
+            console.error("Não foi possível copiar o código:", erro);
+            mostrarAviso("Não foi possível copiar o código.");
+        }
+    });
+
+    cabecalho.appendChild(nomeLinguagem);
+    cabecalho.appendChild(copiar);
+
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+
+    // textContent impede que conteúdo retornado pela IA seja interpretado como HTML.
+    code.textContent = codigo;
+
+    if (linguagem) {
+        code.classList.add("language-" + linguagem);
+    }
+
+    pre.appendChild(code);
+
+    bloco.appendChild(cabecalho);
+    bloco.appendChild(pre);
+
+    return bloco;
+}
+
+// Interpreta cercas Markdown de código sem usar innerHTML.
+// O conteúdo da resposta é sempre inserido como texto, de forma segura.
+function renderizarTextoComCodigo(conteudo, destino) {
+    const texto = String(conteudo ?? "");
+    const regex = /```([^\n`]*)\r?\n([\s\S]*?)```/g;
+
+    let posicao = 0;
+    let resultado;
+
+    while ((resultado = regex.exec(texto)) !== null) {
+        // Texto comum que aparece antes do bloco de código
+        if (resultado.index > posicao) {
+            const parteTexto = document.createElement("div");
+
+            parteTexto.classList.add("texto-resposta");
+            parteTexto.textContent = texto.slice(posicao, resultado.index);
+            parteTexto.style.whiteSpace = "pre-wrap";
+            parteTexto.style.overflowWrap = "anywhere";
+
+            destino.appendChild(parteTexto);
+        }
+
+        const linguagem = resultado[1].trim().split(/\s+/)[0] || "";
+        const codigo = resultado[2].replace(/\n$/, "");
+
+        destino.appendChild(criarBlocoCodigo(codigo, linguagem));
+
+        posicao = regex.lastIndex;
+    }
+
+    // Texto que aparece depois do último bloco
+    if (posicao < texto.length) {
+        const parteTexto = document.createElement("div");
+
+        parteTexto.classList.add("texto-resposta");
+        parteTexto.textContent = texto.slice(posicao);
+        parteTexto.style.whiteSpace = "pre-wrap";
+        parteTexto.style.overflowWrap = "anywhere";
+
+        destino.appendChild(parteTexto);
+    }
+
+    // Resposta vazia: mantém um elemento no lugar do conteúdo.
+    if (!texto) {
+        const vazio = document.createElement("div");
+        vazio.classList.add("texto-resposta");
+        destino.appendChild(vazio);
+    }
 }
 
 
@@ -351,22 +484,18 @@ function fecharSidebarNoCelular() {
 // ========================================
 
 function rolarParaOFim() {
-
     chat.scrollTop = chat.scrollHeight;
 }
 
-function desenharMensagem(texto, tipo, miniatura) {
-
+function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
     const mensagem = document.createElement("div");
 
     mensagem.classList.add("message");
 
     if (tipo === "usuario") {
-
         mensagem.classList.add("user-message");
 
         if (miniatura) {
-
             const imagem = document.createElement("img");
 
             imagem.src = miniatura;
@@ -377,28 +506,26 @@ function desenharMensagem(texto, tipo, miniatura) {
         }
 
         if (texto) {
-
             const textoUsuario = document.createElement("div");
 
             textoUsuario.textContent = texto;
 
             mensagem.appendChild(textoUsuario);
         }
-
     } else {
-
         mensagem.classList.add("pyxie-message");
 
-        // Texto da resposta (sem balão)
+        // Resposta com suporte a blocos de código
         const textoMensagem = document.createElement("div");
+        textoMensagem.classList.add("conteudo-resposta");
 
-        textoMensagem.textContent = texto;
+        renderizarTextoComCodigo(texto, textoMensagem);
 
-        // Ações abaixo do texto
+        // Ações abaixo da resposta
         const acoes = document.createElement("div");
-
         acoes.classList.add("acoes");
 
+        // Copiar resposta inteira
         const copiar = document.createElement("button");
 
         copiar.type = "button";
@@ -407,26 +534,37 @@ function desenharMensagem(texto, tipo, miniatura) {
         copiar.classList.add("copy-button");
 
         copiar.addEventListener("click", async () => {
-
             try {
-
-                await navigator.clipboard.writeText(texto);
+                await copiarTexto(String(texto ?? ""));
 
                 copiar.textContent = "Copiado";
 
                 setTimeout(() => {
                     copiar.textContent = "Copiar";
                 }, 1500);
-
             } catch (erro) {
-
                 console.error("Não foi possível copiar:", erro);
-
+                mostrarAviso("Não foi possível copiar a resposta.");
             }
-
         });
 
         acoes.appendChild(copiar);
+
+        // Só a última resposta salva recebe o botão de regeneração.
+        if (opcoes.permitirRegenerar === true && opcoes.conversaId) {
+            const regenerar = document.createElement("button");
+
+            regenerar.type = "button";
+            regenerar.textContent = "Regenerar";
+            regenerar.title = "Gerar outra resposta para a última pergunta";
+            regenerar.classList.add("copy-button", "regenerate-button");
+
+            regenerar.addEventListener("click", () => {
+                regenerarResposta(opcoes.conversaId);
+            });
+
+            acoes.appendChild(regenerar);
+        }
 
         mensagem.appendChild(textoMensagem);
         mensagem.appendChild(acoes);
@@ -438,10 +576,9 @@ function desenharMensagem(texto, tipo, miniatura) {
 }
 
 function renderizarMensagens() {
-
     chat.innerHTML = "";
 
-    // A saudação aparece no topo de toda conversa, mas não é salva nem enviada
+    // A saudação aparece no topo de toda conversa, mas não é salva nem enviada.
     desenharMensagem(SAUDACAO, "pyxie");
 
     const conversa = conversaAtiva();
@@ -450,8 +587,23 @@ function renderizarMensagens() {
         return;
     }
 
-    conversa.mensagens.forEach(m => {
-        desenharMensagem(m.texto, m.tipo, m.miniatura);
+    conversa.mensagens.forEach((m, indice) => {
+        const ehUltimaMensagem =
+            indice === conversa.mensagens.length - 1;
+
+        const temPerguntaAnterior = conversa.mensagens
+            .slice(0, indice)
+            .some(anterior => anterior.tipo === "usuario");
+
+        const permitirRegenerar =
+            ehUltimaMensagem &&
+            m.tipo === "pyxie" &&
+            temPerguntaAnterior;
+
+        desenharMensagem(m.texto, m.tipo, m.miniatura, {
+            permitirRegenerar: permitirRegenerar,
+            conversaId: permitirRegenerar ? conversa.id : null
+        });
     });
 
     // Se voltou para uma conversa que ainda espera resposta
@@ -462,11 +614,264 @@ function renderizarMensagens() {
 
 
 // ========================================
+// REGENERAR ÚLTIMA RESPOSTA
+// ========================================
+
+async function regenerarResposta(conversaId) {
+    // Impede requisições simultâneas.
+    if (pendenteId) {
+        return;
+    }
+
+    const conversa = estado.conversas.find(c => c.id === conversaId);
+
+    if (!conversa || !Array.isArray(conversa.mensagens)) {
+        mostrarAviso("Não encontrei essa conversa.");
+        return;
+    }
+
+    const ultimaMensagem = conversa.mensagens[conversa.mensagens.length - 1];
+
+    // A última mensagem precisa ser uma resposta da PYXIE.
+    if (!ultimaMensagem || ultimaMensagem.tipo !== "pyxie") {
+        mostrarAviso("Não há uma resposta recente para regenerar.");
+        return;
+    }
+
+    const temPergunta = conversa.mensagens
+        .slice(0, -1)
+        .some(m => m.tipo === "usuario");
+
+    if (!temPergunta) {
+        mostrarAviso("Não encontrei a pergunta que originou essa resposta.");
+        return;
+    }
+
+    pendenteId = conversa.id;
+    definirCarregando(true);
+
+    if (estado.ativa === conversa.id) {
+        criarIndicador();
+    }
+
+    try {
+        const resposta = await fetch(
+            `/regenerar/${encodeURIComponent(conversa.id)}`,
+            {
+                method: "POST"
+            }
+        );
+
+        let dados = {};
+
+        try {
+            dados = await resposta.json();
+        } catch (_) {
+            dados = {};
+        }
+
+        if (!resposta.ok) {
+            throw new Error(
+                dados.detail ||
+                dados.erro ||
+                `A API retornou o erro HTTP ${resposta.status}.`
+            );
+        }
+
+        if (!dados.resposta || typeof dados.resposta !== "string") {
+            throw new Error("A API não retornou uma resposta válida.");
+        }
+
+        // A conversa pode ter sido apagada durante a requisição.
+        if (!estado.conversas.includes(conversa)) {
+            mostrarAviso("A conversa foi removida antes de a resposta terminar.");
+            return;
+        }
+
+        const ultimaAtual = conversa.mensagens[conversa.mensagens.length - 1];
+
+        // Evita substituir uma mensagem que tenha mudado durante a requisição.
+        if (ultimaAtual !== ultimaMensagem) {
+            mostrarAviso("A conversa mudou durante a regeneração. Tente novamente.");
+            return;
+        }
+
+        // Substitui a resposta anterior; não adiciona outra mensagem.
+        ultimaMensagem.texto = dados.resposta;
+        conversa.atualizadaEm = Date.now();
+
+        salvarEstado();
+        renderizarLista();
+
+        if (dados.uso) {
+            atualizarPainelUso(dados.uso);
+        }
+
+    } catch (erro) {
+        console.error("Erro ao regenerar a resposta:", erro);
+
+        mostrarAviso(
+            erro.message ||
+            "Não foi possível regenerar a resposta."
+        );
+    } finally {
+        pendenteId = null;
+
+        removerIndicador();
+        definirCarregando(false);
+
+        // Atualiza a conversa que estiver aberta, sem trocar a seleção atual.
+        if (conversaAtiva()) {
+            renderizarMensagens();
+        }
+    }
+}
+
+
+// ========================================
+// COMPARTILHAR / COPIAR CONVERSA
+// ========================================
+
+function formatarConversaParaCompartilhar(conversa) {
+    const linhas = [
+        "PYXIE",
+        `Conversa: ${conversa.titulo || "Sem título"}`,
+        ""
+    ];
+
+    conversa.mensagens.forEach(mensagem => {
+        const ehUsuario = mensagem.tipo === "usuario";
+        const autor = ehUsuario ? "Você" : "PYXIE";
+        const texto = (mensagem.texto || "").trim();
+
+        linhas.push(`${autor}:`);
+
+        if (texto) {
+            linhas.push(texto);
+        }
+
+        if (mensagem.miniatura && !texto) {
+            linhas.push("[imagem enviada]");
+        } else if (mensagem.miniatura && texto) {
+            linhas.push("[mensagem com imagem anexada]");
+        }
+
+        linhas.push("");
+    });
+
+    return linhas.join("\n").trim();
+}
+
+async function compartilharConversa() {
+    const conversa = conversaAtiva();
+
+    if (!conversa || conversa.mensagens.length === 0) {
+        mostrarAviso("Esta conversa ainda não tem mensagens para copiar.");
+        return;
+    }
+
+    const conteudo = formatarConversaParaCompartilhar(conversa);
+
+    try {
+        await copiarTexto(conteudo);
+        mostrarAviso("Conversa copiada! Agora você pode colá-la onde quiser.");
+    } catch (erro) {
+        console.error("Não foi possível copiar a conversa:", erro);
+        mostrarAviso("Não foi possível copiar a conversa neste navegador.");
+    }
+}
+
+
+// ========================================
+// BOTÃO DE COMPARTILHAR
+// ========================================
+
+// Se o botão já existir no HTML, ele será reutilizado.
+// Caso contrário, é criado aqui para não exigir alteração no index.html.
+function configurarBotaoCompartilhar() {
+    let botaoCompartilhar = document.getElementById("compartilhar-conversa");
+
+    if (botaoCompartilhar) {
+        botaoCompartilhar.addEventListener("click", compartilharConversa);
+        return;
+    }
+
+    const cabecalho = document.querySelector(".chat-header");
+
+    if (!cabecalho) {
+        console.warn("Não encontrei o cabeçalho para adicionar o botão de compartilhar.");
+        return;
+    }
+
+    botaoCompartilhar = document.createElement("button");
+
+    botaoCompartilhar.type = "button";
+    botaoCompartilhar.id = "compartilhar-conversa";
+    botaoCompartilhar.classList.add("btn-icone");
+    botaoCompartilhar.title = "Copiar conversa atual";
+    botaoCompartilhar.setAttribute("aria-label", "Copiar conversa atual");
+
+    // Ícone de compartilhar criado sem inserir HTML externo.
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "20");
+    svg.setAttribute("height", "20");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+
+    const circulo1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circulo1.setAttribute("cx", "18");
+    circulo1.setAttribute("cy", "5");
+    circulo1.setAttribute("r", "3");
+
+    const circulo2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circulo2.setAttribute("cx", "6");
+    circulo2.setAttribute("cy", "12");
+    circulo2.setAttribute("r", "3");
+
+    const circulo3 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circulo3.setAttribute("cx", "18");
+    circulo3.setAttribute("cy", "19");
+    circulo3.setAttribute("r", "3");
+
+    const linha1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    linha1.setAttribute("x1", "8.6");
+    linha1.setAttribute("y1", "10.5");
+    linha1.setAttribute("x2", "15.4");
+    linha1.setAttribute("y2", "6.5");
+
+    const linha2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    linha2.setAttribute("x1", "8.6");
+    linha2.setAttribute("y1", "13.5");
+    linha2.setAttribute("x2", "15.4");
+    linha2.setAttribute("y2", "17.5");
+
+    svg.append(circulo1, circulo2, circulo3, linha1, linha2);
+    botaoCompartilhar.appendChild(svg);
+
+    // Posicionamento independente da grade original do cabeçalho.
+    cabecalho.style.position = cabecalho.style.position || "relative";
+    botaoCompartilhar.style.position = "absolute";
+    botaoCompartilhar.style.right = "52px";
+    botaoCompartilhar.style.top = "50%";
+    botaoCompartilhar.style.transform = "translateY(-50%)";
+    botaoCompartilhar.style.zIndex = "2";
+
+    cabecalho.appendChild(botaoCompartilhar);
+
+    botaoCompartilhar.addEventListener("click", compartilharConversa);
+}
+
+
+// ========================================
 // INDICADOR DE PROCESSAMENTO
 // ========================================
 
 function criarIndicador() {
-
     if (document.getElementById("indicador")) {
         return;
     }
@@ -492,7 +897,6 @@ function criarIndicador() {
 }
 
 function removerIndicador() {
-
     const indicador = document.getElementById("indicador");
 
     if (indicador) {
@@ -506,6 +910,10 @@ function removerIndicador() {
 // ========================================
 
 function mostrarAviso(texto) {
+    if (!aviso) {
+        console.warn(texto);
+        return;
+    }
 
     aviso.textContent = texto;
     aviso.hidden = false;
@@ -524,9 +932,7 @@ function mostrarAviso(texto) {
 
 // Abre um arquivo de imagem como elemento <img>
 function carregarImagem(arquivo) {
-
     return new Promise((resolve, reject) => {
-
         const url = URL.createObjectURL(arquivo);
         const imagem = new Image();
 
@@ -544,9 +950,8 @@ function carregarImagem(arquivo) {
     });
 }
 
-// Redimensiona (imagem ou frame de vídeo) e devolve um JPEG em data URL
+// Redimensiona imagem ou frame de vídeo e devolve JPEG em data URL
 function reduzirImagem(fonte, largura, altura, ladoMaximo, qualidade) {
-
     const escala = Math.min(1, ladoMaximo / Math.max(largura, altura));
 
     const canvas = document.createElement("canvas");
@@ -566,15 +971,26 @@ function reduzirImagem(fonte, largura, altura, ladoMaximo, qualidade) {
 }
 
 function definirImagemPendente(fonte, largura, altura) {
-
     if (!largura || !altura) {
         mostrarAviso("Não consegui ler essa imagem.");
         return;
     }
 
     imagemPendente = {
-        dataUrl: reduzirImagem(fonte, largura, altura, IMAGEM_LADO_MAX, IMAGEM_QUALIDADE),
-        miniatura: reduzirImagem(fonte, largura, altura, MINIATURA_LADO_MAX, MINIATURA_QUALIDADE)
+        dataUrl: reduzirImagem(
+            fonte,
+            largura,
+            altura,
+            IMAGEM_LADO_MAX,
+            IMAGEM_QUALIDADE
+        ),
+        miniatura: reduzirImagem(
+            fonte,
+            largura,
+            altura,
+            MINIATURA_LADO_MAX,
+            MINIATURA_QUALIDADE
+        )
     };
 
     renderizarPrevia();
@@ -585,16 +1001,12 @@ function definirImagemPendente(fonte, largura, altura) {
 }
 
 function renderizarPrevia() {
-
     if (imagemPendente) {
-
         previaImg.src = imagemPendente.miniatura;
         previa.hidden = false;
 
         input.placeholder = PLACEHOLDER_COM_IMAGEM;
-
     } else {
-
         previa.hidden = true;
         previaImg.removeAttribute("src");
 
@@ -603,7 +1015,6 @@ function renderizarPrevia() {
 }
 
 function removerImagemPendente() {
-
     imagemPendente = null;
 
     renderizarPrevia();
@@ -611,7 +1022,6 @@ function removerImagemPendente() {
 
 // Ponto de entrada comum: seletor de arquivo, colar, arrastar
 async function adicionarArquivo(arquivo) {
-
     if (!arquivo) {
         return;
     }
@@ -627,13 +1037,14 @@ async function adicionarArquivo(arquivo) {
     }
 
     try {
-
         const imagem = await carregarImagem(arquivo);
 
-        definirImagemPendente(imagem, imagem.naturalWidth, imagem.naturalHeight);
-
+        definirImagemPendente(
+            imagem,
+            imagem.naturalWidth,
+            imagem.naturalHeight
+        );
     } catch (erro) {
-
         console.error("Erro ao abrir imagem:", erro);
 
         mostrarAviso("Não consegui abrir essa imagem. Tente um arquivo JPG ou PNG.");
@@ -646,9 +1057,7 @@ async function adicionarArquivo(arquivo) {
 // ========================================
 
 function mensagemErroCamera(erro) {
-
     switch (erro && erro.name) {
-
         case "NotAllowedError":
         case "SecurityError":
             return "O acesso à câmera foi negado. Libere a câmera para este site nas configurações do navegador.";
@@ -666,9 +1075,7 @@ function mensagemErroCamera(erro) {
 }
 
 function pararCamera() {
-
     if (streamCamera) {
-
         streamCamera.getTracks().forEach(faixa => faixa.stop());
 
         streamCamera = null;
@@ -678,14 +1085,12 @@ function pararCamera() {
 }
 
 async function iniciarCamera() {
-
     pararCamera();
 
     cameraErro.textContent = "";
     cameraCapturar.disabled = true;
 
     try {
-
         streamCamera = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: cameraFrontal ? "user" : "environment",
@@ -697,15 +1102,16 @@ async function iniciarCamera() {
 
         cameraVideo.srcObject = streamCamera;
 
-        // Espelha só a prévia da câmera frontal / webcam (a foto sai normal)
+        // Espelha só a prévia da câmera frontal / webcam.
         const config = streamCamera.getVideoTracks()[0].getSettings();
 
-        cameraVideo.classList.toggle("espelhado", config.facingMode !== "environment");
+        cameraVideo.classList.toggle(
+            "espelhado",
+            config.facingMode !== "environment"
+        );
 
         cameraCapturar.disabled = false;
-
     } catch (erro) {
-
         console.error("Erro ao abrir a câmera:", erro);
 
         cameraErro.textContent = mensagemErroCamera(erro);
@@ -713,9 +1119,7 @@ async function iniciarCamera() {
 }
 
 async function abrirCamera() {
-
-    // Sem getUserMedia (página em http fora de localhost, navegador antigo):
-    // cai para a câmera nativa do celular via <input capture>
+    // Fallback para a câmera nativa do celular
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         inputArquivoCamera.click();
         return;
@@ -729,8 +1133,7 @@ async function abrirCamera() {
 }
 
 function fecharCamera() {
-
-    // Fecha o stream: a luz da câmera apaga assim que o painel fecha
+    // Fecha o stream: a luz da câmera apaga assim que o painel fecha.
     pararCamera();
 
     cameraModal.hidden = true;
@@ -740,7 +1143,6 @@ function fecharCamera() {
 }
 
 function capturarFoto() {
-
     const largura = cameraVideo.videoWidth;
     const altura = cameraVideo.videoHeight;
 
@@ -760,7 +1162,6 @@ function capturarFoto() {
 // ========================================
 
 function definirCarregando(carregando) {
-
     input.disabled = carregando;
     botao.disabled = carregando;
     botaoAnexar.disabled = carregando;
@@ -768,11 +1169,10 @@ function definirCarregando(carregando) {
 }
 
 async function enviarMensagem() {
-
     const texto = input.value.trim();
     const imagem = imagemPendente;
 
-    // Não envia mensagem vazia (texto ou imagem) nem enquanto espera resposta
+    // Não envia mensagem vazia nem enquanto espera resposta.
     if ((!texto && !imagem) || pendenteId) {
         return;
     }
@@ -783,7 +1183,7 @@ async function enviarMensagem() {
         return;
     }
 
-    // Contexto: mensagens ANTERIORES a esta (a atual vai em "mensagem").
+    // Contexto: mensagens anteriores à atual.
     // Imagens antigas não são reenviadas: só o texto delas.
     const historico = conversa.mensagens
         .slice(-MENSAGENS_DE_CONTEXTO)
@@ -799,55 +1199,39 @@ async function enviarMensagem() {
 
     // Limpa campo e anexo
     input.value = "";
-
     removerImagemPendente();
 
     // Desativa controles enquanto processa
     pendenteId = conversa.id;
 
     definirCarregando(true);
-
     criarIndicador();
 
     let respostaTexto = null;
     let deuErro = false;
 
     try {
-
         const resposta = await fetch("/perguntar", {
-
             method: "POST",
-
             headers: {
                 "Content-Type": "application/json"
             },
-
             body: JSON.stringify({
                 mensagem: texto,
-                conversa_id: conversa.id,
+                chat_id: conversa.id,
                 historico: historico,
                 imagem: imagem ? imagem.dataUrl : null
             })
-
         });
 
-        // Verifica erro HTTP
         if (!resposta.ok) {
-
-            throw new Error(
-                `Erro HTTP: ${resposta.status}`
-            );
-
+            throw new Error(`Erro HTTP: ${resposta.status}`);
         }
 
         const dados = await resposta.json();
 
         if (!dados.resposta) {
-
-            throw new Error(
-                "A API não retornou uma resposta válida."
-            );
-
+            throw new Error("A API não retornou uma resposta válida.");
         }
 
         respostaTexto = dados.resposta;
@@ -855,18 +1239,11 @@ async function enviarMensagem() {
         if (dados.uso) {
             atualizarPainelUso(dados.uso);
         }
-
     } catch (erro) {
-
-        console.error(
-            "Erro ao conversar com a PYXIE:",
-            erro
-        );
+        console.error("Erro ao conversar com a PYXIE:", erro);
 
         deuErro = true;
-
     } finally {
-
         pendenteId = null;
 
         removerIndicador();
@@ -875,28 +1252,26 @@ async function enviarMensagem() {
         definirCarregando(false);
     }
 
-    // A conversa pode ter sido apagada enquanto esperava
+    // A conversa pode ter sido apagada enquanto esperava.
     const aindaExiste = estado.conversas.includes(conversa);
 
-    // Só desenha se o usuário ainda está olhando para essa conversa
+    // Só desenha se o usuário ainda está olhando para essa conversa.
     const visivel = estado.ativa === conversa.id;
 
     if (deuErro) {
-
-        // Erros aparecem na tela, mas não entram no histórico
+        // Erros aparecem na tela, mas não entram no histórico.
         if (visivel) {
             desenharMensagem(
                 "Desculpe, ocorreu um erro ao tentar falar comigo.",
                 "pyxie"
             );
         }
-
     } else if (aindaExiste) {
-
         registrarMensagem(conversa, "pyxie", respostaTexto);
 
         if (visivel) {
-            desenharMensagem(respostaTexto, "pyxie");
+            // Redesenha para habilitar o botão de regeneração na última resposta.
+            renderizarMensagens();
         }
     }
 
@@ -906,7 +1281,7 @@ async function enviarMensagem() {
 
 
 // ========================================
-// PAINEL DE USO (Groq)
+// PAINEL DE USO (GROQ)
 // ========================================
 
 const botaoUso = document.getElementById("uso-toggle");
@@ -933,14 +1308,21 @@ function formatarNumero(n) {
 }
 
 function atualizarBarra(barraEl, restante, limite) {
-    if (limite === null || limite === undefined || limite === 0 || restante === null) {
+    if (
+        limite === null ||
+        limite === undefined ||
+        limite === 0 ||
+        restante === null
+    ) {
         barraEl.style.width = "0%";
         return;
     }
+
     const pct = Math.max(0, Math.min(100, (restante / limite) * 100));
+
     barraEl.style.width = pct + "%";
 
-    // Fica amarelo/vermelho quando o uso está baixo (perto do limite)
+    // Fica amarelo/vermelho quando o uso está baixo.
     barraEl.classList.toggle("barra-atencao", pct <= 25 && pct > 10);
     barraEl.classList.toggle("barra-critica", pct <= 10);
 }
@@ -958,7 +1340,7 @@ function atualizarPainelUso(uso) {
     const elConteudo = document.getElementById("uso-conteudo");
 
     if (!uso.modelo) {
-        // Ainda não houve nenhuma chamada à Groq nesta sessão do servidor
+        // Ainda não houve nenhuma chamada à Groq nesta sessão do servidor.
         if (elVazio) elVazio.hidden = false;
         if (elConteudo) elConteudo.hidden = true;
         return;
@@ -971,29 +1353,47 @@ function atualizarPainelUso(uso) {
 
     if (elTokensTexto) {
         elTokensTexto.textContent =
-            formatarNumero(uso.tokens_restantes) + " / " + formatarNumero(uso.tokens_limite);
+            formatarNumero(uso.tokens_restantes) +
+            " / " +
+            formatarNumero(uso.tokens_limite);
     }
+
     if (elTokensBarra) {
-        atualizarBarra(elTokensBarra, uso.tokens_restantes, uso.tokens_limite);
+        atualizarBarra(
+            elTokensBarra,
+            uso.tokens_restantes,
+            uso.tokens_limite
+        );
     }
+
     if (elTokensReset && uso.tokens_reset) {
         elTokensReset.textContent = "reseta em " + uso.tokens_reset;
     }
 
     if (elPedidosTexto) {
         elPedidosTexto.textContent =
-            formatarNumero(uso.requests_restantes) + " / " + formatarNumero(uso.requests_limite);
+            formatarNumero(uso.requests_restantes) +
+            " / " +
+            formatarNumero(uso.requests_limite);
     }
+
     if (elPedidosBarra) {
-        atualizarBarra(elPedidosBarra, uso.requests_restantes, uso.requests_limite);
+        atualizarBarra(
+            elPedidosBarra,
+            uso.requests_restantes,
+            uso.requests_limite
+        );
     }
 }
 
 async function carregarUsoInicial() {
     try {
         const resposta = await fetch("/uso");
+
         if (!resposta.ok) return;
+
         const dados = await resposta.json();
+
         atualizarPainelUso(dados);
     } catch (erro) {
         console.warn("Não foi possível carregar o uso inicial:", erro);
@@ -1003,6 +1403,7 @@ async function carregarUsoInicial() {
 if (botaoUso) {
     botaoUso.addEventListener("click", alternarPainelUso);
 }
+
 if (overlayUso) {
     overlayUso.addEventListener("click", fecharPainelUsoNoCelular);
 }
@@ -1012,32 +1413,19 @@ if (overlayUso) {
 // EVENTOS
 // ========================================
 
-botao.addEventListener(
-    "click",
-    enviarMensagem
-);
+botao.addEventListener("click", enviarMensagem);
 
-input.addEventListener(
-    "keydown",
-    function (event) {
+input.addEventListener("keydown", function (event) {
+    // Enter envia
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
 
-        // Enter envia
-        if (
-            event.key === "Enter" &&
-            !event.shiftKey
-        ) {
-
-            event.preventDefault();
-
-            enviarMensagem();
-        }
-
+        enviarMensagem();
     }
-);
+});
 
 // Colar imagem (Ctrl+V / Cmd+V) no campo de texto
 input.addEventListener("paste", function (event) {
-
     const itens = Array.from(
         (event.clipboardData && event.clipboardData.items) || []
     );
@@ -1045,7 +1433,6 @@ input.addEventListener("paste", function (event) {
     const item = itens.find(i => i.type.startsWith("image/"));
 
     if (item) {
-
         event.preventDefault();
 
         adicionarArquivo(item.getAsFile());
@@ -1054,21 +1441,18 @@ input.addEventListener("paste", function (event) {
 
 // Arrastar e soltar uma imagem na tela
 containerChat.addEventListener("dragover", function (event) {
-
     event.preventDefault();
 
     containerChat.classList.add("arrastando");
 });
 
 containerChat.addEventListener("dragleave", function (event) {
-
     if (!event.relatedTarget || !containerChat.contains(event.relatedTarget)) {
         containerChat.classList.remove("arrastando");
     }
 });
 
 containerChat.addEventListener("drop", function (event) {
-
     event.preventDefault();
 
     containerChat.classList.remove("arrastando");
@@ -1087,7 +1471,6 @@ botaoAnexar.addEventListener("click", () => inputArquivo.click());
 botaoCamera.addEventListener("click", abrirCamera);
 
 function aoEscolherArquivo(event) {
-
     const arquivo = event.target.files[0];
 
     // Limpa para permitir escolher o mesmo arquivo de novo
@@ -1102,26 +1485,22 @@ inputArquivoCamera.addEventListener("change", aoEscolherArquivo);
 previaRemover.addEventListener("click", removerImagemPendente);
 
 cameraCancelar.addEventListener("click", fecharCamera);
-
 cameraCapturar.addEventListener("click", capturarFoto);
 
 cameraVirar.addEventListener("click", () => {
-
     cameraFrontal = !cameraFrontal;
 
     iniciarCamera();
 });
 
 document.addEventListener("keydown", function (event) {
-
     if (event.key === "Escape" && !cameraModal.hidden) {
         fecharCamera();
     }
 });
 
-// Por privacidade, a câmera não fica ligada com a aba em segundo plano
+// Por privacidade, a câmera não fica ligada com a aba em segundo plano.
 document.addEventListener("visibilitychange", function () {
-
     if (document.hidden && !cameraModal.hidden) {
         fecharCamera();
     }
@@ -1133,12 +1512,20 @@ botaoNova.addEventListener("click", () => {
 });
 
 botaoLimpar.addEventListener("click", () => {
-
     if (!confirm("Apagar todo o histórico de conversas deste navegador?")) {
         return;
     }
 
-    estado = { conversas: [], ativa: null };
+    estado.conversas.forEach(c =>
+        fetch(`/chat/${encodeURIComponent(c.id)}`, {
+            method: "DELETE"
+        }).catch(() => { })
+    );
+
+    estado = {
+        conversas: [],
+        ativa: null
+    };
 
     novaConversa();
     fecharSidebarNoCelular();
@@ -1147,6 +1534,9 @@ botaoLimpar.addEventListener("click", () => {
 botaoMenu.addEventListener("click", alternarSidebar);
 
 overlay.addEventListener("click", fecharSidebarNoCelular);
+
+// Cria ou conecta o botão de copiar/compartilhar conversa.
+configurarBotaoCompartilhar();
 
 
 // ========================================
@@ -1158,20 +1548,15 @@ carregarEstado();
 ordenarConversas();
 
 if (conversaAtiva()) {
-
     abrirConversa(estado.ativa);
-
 } else if (estado.conversas.length > 0) {
-
     abrirConversa(estado.conversas[0].id);
-
 } else {
-
     novaConversa();
 }
 
-// No celular o histórico começa fechado
+// No celular o histórico começa fechado.
 fecharSidebarNoCelular();
 
-// Mostra alguma coisa no painel de uso mesmo antes da 1a mensagem
+// Mostra alguma coisa no painel de uso antes da primeira mensagem.
 carregarUsoInicial();

@@ -4,7 +4,7 @@ from modules.ollama_ai import perguntar_ollama
 from modules.gemini_ai import perguntar_gemini
 
 
-LLM_PROVIDER = "groq"
+LLM_PROVIDER = "groq" # altere para gemini para trocar de modelo api
 
 
 def perguntar_llm(pergunta, contexto):

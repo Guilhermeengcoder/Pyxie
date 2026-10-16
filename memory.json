@@ -1,1 +1,177 @@
-{}
+{
+  "schema_version": 1,
+  "description": "Memoria de referencia persistente da PYXIE. Contem informacoes relativamente estaveis, objetivos e preferencias. Nao substitui o contexto recente da conversa.",
+  "profile": {
+    "preferred_name": "Guilherme",
+    "language": "pt-BR",
+    "country": "Brasil",
+    "general_region": "Rio de Janeiro",
+    "education": {
+      "field": "Engenharia da Computacao",
+      "institution": "Estacio",
+      "interests": [
+        "Inteligencia artificial",
+        "Programacao",
+        "Robotica",
+        "Sistemas embarcados"
+      ]
+    },
+    "career": {
+      "primary_aspiration": "Trabalhar na NASA ou na area aeroespacial.",
+      "related_interests": [
+        "Inteligencia artificial",
+        "Pesquisa e desenvolvimento",
+        "Robotica",
+        "Sistemas embarcados",
+        "Computacao aplicada"
+      ],
+      "alternative_paths_considered": [
+        "Pos-graduacao ou pesquisa em inteligencia artificial",
+        "ITA",
+        "Oportunidades tecnicas na Petrobras"
+      ],
+      "languages_and_learning": [
+        "Estuda ingles.",
+        "Estuda frances de forma independente."
+      ]
+    }
+  },
+  "assistant_project": {
+    "name": "PYXIE",
+    "name_inspiration": "Referencia a fadas e Fairy Tail.",
+    "purpose": "Desenvolver uma assistente pessoal inteligente inspirada em assistentes como o Jarvis, inicialmente para uso proprio.",
+    "long_term_vision": [
+      "Possivel expansao para uso por familiares e amigos.",
+      "Interacao por computador e telefone.",
+      "Possivel integracao futura com Raspberry Pi ou hardware robotico compacto.",
+      "Possivel interacao por relogio, pulseira ou fones de ouvido."
+    ],
+    "principles": [
+      "Priorizar privacidade.",
+      "Manter custos baixos e evitar dependencia desnecessaria de APIs pagas.",
+      "Construir uma arquitetura modular e sustentavel.",
+      "Entender o funcionamento do codigo em vez de apenas aplicar correcoes prontas.",
+      "Preservar componentes uteis e refatorar partes problematicas de forma consciente."
+    ],
+    "learning_and_development_preferences": [
+      "Aprender os arquivos e modulos um por vez.",
+      "Compreender a razao das mudancas antes de implementa-las.",
+      "Testar mudancas em etapas pequenas.",
+      "Evitar reescritas amplas sem entender a arquitetura existente."
+    ],
+    "academic_interest": {
+      "idea": "Investigar o desenvolvimento de uma assistente de IA em hardware limitado.",
+      "possible_title": "Programando uma IA assistente em hardware limitado"
+    },
+    "memory_architecture_direction": {
+      "reference_memory": "Usar memory.json para informacoes essenciais e relativamente estaveis.",
+      "short_term_memory": "Manter a STM responsavel pelo contexto recente da conversa.",
+      "document_knowledge_base": "Considerar uma base separada para pesquisar documentos quando essa etapa for implementada.",
+      "integration_preference": "Centralizar a recuperacao de memoria no cerebro da PYXIE e fornecer o contexto relevante aos diferentes modelos de API.",
+      "important_constraint": "Nao reintroduzir a antiga LTM sem uma decisao explicita e uma analise de compatibilidade com a STM."
+    }
+  },
+  "technical_interests": {
+    "programming": [
+      "Python",
+      "C",
+      "C++"
+    ],
+    "areas": [
+      "Inteligencia artificial",
+      "Automacao",
+      "Robotica",
+      "Sistemas embarcados",
+      "Integracao entre software e hardware"
+    ],
+    "hardware_project": {
+      "platform_interest": "ESP32-S3",
+      "project_context": "Projeto academico de robotica com sensores e integracao com a PYXIE.",
+      "components_and_capabilities_explored": [
+        "Microfone digital INMP441",
+        "Audio com MAX98357A",
+        "Sensor ultrassonico HC-SR04",
+        "Servomotores",
+        "Matriz de LEDs MAX7219",
+        "Integracao por Wi-Fi e HTTP"
+      ],
+      "design_goals": [
+        "Preservar a interacao por voz.",
+        "Integrar sensores e atuadores ao nucleo de software da PYXIE.",
+        "Explorar recursos de acessibilidade, incluindo possiveis saidas relacionadas a LIBRAS."
+      ]
+    }
+  },
+  "preferences": {
+    "communication": {
+      "language": "Portugues brasileiro",
+      "tone": [
+        "Amigavel",
+        "Natural",
+        "Direto e objetivo",
+        "Caloroso sem exageros"
+      ],
+      "response_preferences": [
+        "Evitar respostas genericas e repetitivas.",
+        "Usar contexto anterior quando for relevante.",
+        "Explicar assuntos tecnicos quando houver intencao de aprender ou resolver um problema.",
+        "Nao transformar automaticamente conversas pessoais em tarefas tecnicas."
+      ]
+    },
+    "technical_help": [
+      "Explicar o que esta sendo alterado e por que.",
+      "Preservar codigo e comportamento existentes sempre que possivel.",
+      "Indicar exatamente quais arquivos ou funcoes precisam ser modificados.",
+      "Nao alterar partes nao relacionadas sem necessidade.",
+      "Preferir diagnostico e testes graduais a mudancas especulativas."
+    ]
+  },
+  "ongoing_projects": [
+    {
+      "name": "PYXIE",
+      "purpose": "Assistente pessoal inteligente com integracao de modelos de IA, memoria, interface e possibilidade de hardware.",
+      "status_policy": "O status tecnico exato deve ser verificado no codigo atual; nao presumir que versoes ou configuracoes antigas continuam validas."
+    },
+    {
+      "name": "Projeto academico de robotica com PYXIE",
+      "purpose": "Explorar a integracao entre assistente, voz, sensores, atuadores e hardware embarcado.",
+      "status_policy": "Componentes, pinagens e implementacao devem ser confirmados nos arquivos atuais antes de fazer alteracoes."
+    }
+  ],
+  "personal_context": {
+    "family_and_companion_names": [
+      {
+        "name": "Simone De Souza Queiroz",
+        "relationship": "Mae"
+      },
+      {
+        "name": "Henrique De Souza Queiroz",
+        "relationship": "Irmao"
+      },
+      {
+        "name": "Erza",
+        "relationship": "Cachorra"
+      }
+    ],
+    "privacy_note": "Usar esses nomes apenas quando forem relevantes. Nao revelar informacoes pessoais a terceiros sem autorizacao adequada."
+  },
+  "financial_planning_context": {
+    "general_goal": "Construir patrimonio e desenvolver habitos consistentes de poupanca e investimento.",
+    "stable_preferences_and_decisions": [
+      "Valoriza uma estrategia financeira prudente.",
+      "Prefere nao comprometer a reserva de emergencia com movimentos especulativos de curto prazo.",
+      "Considera importante avaliar riscos e respeitar os proprios limites financeiros."
+    ],
+    "volatile_data_policy": "Nao registrar saldos, rendimentos mensais, precos, quantidades de ativos, metas com prazo proximo ou composicao atual da carteira. Consultar informacoes recentes quando forem necessarias."
+  },
+  "memory_rules": [
+    "Distinguir fatos confirmados, preferencias, planos e hipoteses.",
+    "Nao presumir que informacoes antigas continuam atuais.",
+    "Nao inventar informacoes ausentes.",
+    "Quando um dado puder mudar com o tempo, confirmar antes de apresenta-lo como atual.",
+    "Manter informacoes de pessoas diferentes separadas.",
+    "Nao armazenar senhas, tokens, chaves de API ou credenciais.",
+    "Usar somente as informacoes pertinentes a pergunta atual.",
+    "Permitir revisao e remocao de informacoes de referencia pelo usuario."
+  ]
+}

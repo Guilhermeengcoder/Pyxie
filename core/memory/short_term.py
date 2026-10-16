@@ -3,15 +3,48 @@
 # PYXIE AI
 #
 # Responsabilidades:
-#   - Janela deslizante das últimas N mensagens
-#   - Memória seletiva: descarta mensagens de baixo peso
-#   - Expiração por TTL em RAM (sem banco)
-#   - Contexto formatado pronto para injetar no LLM
+#   - Guardar a conversa de UM chat (um arquivo por chat_id)
+#   - Persistir em disco (data/stm/<chat_id>.json)
+#   - Contexto formatado pronto para injetar no LLM (com teto)
+#
+# A STM guarda a conversa inteira no arquivo, sem resumo e sem
+# expiração. O que vai ao LLM é limitado por LIMITE_CONTEXTO_CHARS.
 # =============================================================
 
+import json
+import os
+import re
 import time
 from typing import Optional
 from dataclasses import dataclass, field
+
+
+# =============================================================
+# PERSISTÊNCIA — UM ARQUIVO POR CHAT
+# =============================================================
+
+PASTA_STM = os.getenv("PYXIE_STM_DIR", "data/stm")
+
+# Teto de caracteres do histórico enviado ao LLM (o arquivo guarda tudo).
+# Use None para enviar tudo.
+LIMITE_CONTEXTO_CHARS = 6000
+
+
+def _caminho_stm(chat_id):
+    if not chat_id:
+        return None
+    # chat_id vem do navegador: só letras, números, _ e -
+    nome = re.sub(r"[^A-Za-z0-9_-]", "_", str(chat_id))[:80]
+    return os.path.join(PASTA_STM, f"{nome}.json")
+
+
+def apagar_historico(chat_id):
+    caminho = _caminho_stm(chat_id)
+    if caminho and os.path.exists(caminho):
+        try:
+            os.remove(caminho)
+        except OSError as e:
+            print(f"[STM] erro ao apagar histórico: {e}")
 
 
 # =============================================================
@@ -24,9 +57,6 @@ VALID_ROLES = {"user", "assistant", "system"}
 # =============================================================
 # PESOS POR TIPO DE CONTEÚDO
 # Quanto maior o score, mais importante a mensagem é.
-# Mensagens abaixo de SCORE_MINIMO são descartadas do contexto
-# enviado ao Ollama — mas ainda ficam no histórico interno
-# por no mínimo MIN_TURNS_PROTEGIDOS turnos.
 # =============================================================
 
 SCORE_MINIMO        = 2   # abaixo disso, descarta do contexto
@@ -99,19 +129,26 @@ class ShortTermMemory:
 
     def __init__(
         self,
-        max_messages: int = 30,
+        chat_id: Optional[str] = None,
+        max_messages: int = 10,
         ttl_minutes:  int = 30,
         summarizer=None,
-        max_summary_chars: int = 4000,
+        max_summary_chars: int = 1200,
     ):
-        self.max_messages      = max_messages
-        self.ttl_seconds       = ttl_minutes * 60
-        self._summarizer       = summarizer
+        # Sem chat_id, a STM funciona só em RAM (nada é lido nem gravado)
+        self._arquivo = _caminho_stm(chat_id)
+
+        self.max_messages       = max_messages
+        self.ttl_seconds        = ttl_minutes * 60
+        self._summarizer        = summarizer
         self._max_summary_chars = max_summary_chars
 
         self._messages: list[Message] = []
         self._summary:  str           = ""
         self._last_interaction: float = time.time()
+
+        # Carrega o histórico deste chat (se existir)
+        self._carregar()
 
     # ----------------------------------------------------------
     # ESCRITA
@@ -134,14 +171,15 @@ class ShortTermMemory:
 
         self._last_interaction = time.time()
         self._manage_window()
+        self._salvar()
 
     # ----------------------------------------------------------
     # GERENCIAMENTO DA JANELA
     # ----------------------------------------------------------
 
     def _manage_window(self):
-        if len(self._messages) > self.max_messages:
-            self._compress()
+        # DESATIVADO: sem compressão, nada é descartado.
+        pass
 
     def _compress(self):
         keep = max(3, int(self.max_messages * 0.5))
@@ -189,7 +227,7 @@ class ShortTermMemory:
         return "..." + summary[-self._max_summary_chars:]
 
     # ----------------------------------------------------------
-    # CONTEXTO SELETIVO — coração da memória seletiva
+    # CONTEXTO
     # ----------------------------------------------------------
 
     def get_context(self) -> list[dict]:
@@ -203,49 +241,69 @@ class ShortTermMemory:
         context.extend(m.to_dict() for m in self._messages)
         return context
 
-    def get_context_seletivo(self, max_chars: int = 4000) -> list[dict]:
+    def get_context_seletivo(self, max_chars=None, excluir_ultima: bool = True) -> list[dict]:
         """
-        Retorna contexto filtrado para enviar ao Ollama.
+        Retorna o histórico recente da conversa, respeitando o teto
+        LIMITE_CONTEXTO_CHARS (max_chars é aceito só por compatibilidade
+        e é ignorado).
 
-        Regras:
-        1. As MIN_TURNS_PROTEGIDOS últimas mensagens sempre entram
-           (independente do score) — garantem coerência imediata.
-        2. Mensagens mais antigas só entram se score >= SCORE_MINIMO.
-        3. O total de caracteres não ultrapassa max_chars.
+        excluir_ultima=True deixa de fora a mensagem atual do usuário,
+        que já é enviada separadamente ao LLM.
         """
-        context   = []
-        total_chars = 0
+        msgs = self._messages[:-1] if excluir_ultima else self._messages
+        limite = LIMITE_CONTEXTO_CHARS
 
-        # Separa mensagens protegidas (recentes) das candidatas (antigas)
-        protegidas  = self._messages[-MIN_TURNS_PROTEGIDOS:]
-        candidatas  = self._messages[:-MIN_TURNS_PROTEGIDOS]
+        if limite is None:
+            return [m.to_dict() for m in msgs]
 
-        # Filtra candidatas por score
-        relevantes = [m for m in candidatas if m.score >= SCORE_MINIMO]
+        escolhidas, total = [], 0
 
-        # Monta lista final: relevantes antigas + recentes protegidas
-        selecionadas = relevantes + list(protegidas)
-
-        # Adiciona resumo se existir e couber
-        if self._summary:
-            resumo_chars = len(self._summary)
-            if total_chars + resumo_chars <= max_chars:
-                context.append({"role": "system", "content": self._summary})
-                total_chars += resumo_chars
-
-        # Adiciona mensagens selecionadas respeitando o limite de chars
-        for m in selecionadas:
-            msg_chars = len(m.content)
-            if total_chars + msg_chars > max_chars:
-                # Se for uma mensagem protegida, trunca em vez de descartar
-                if m in protegidas:
-                    truncado = m.content[:max_chars - total_chars - 3] + "..."
-                    context.append({"role": m.role, "content": truncado})
+        for m in reversed(msgs):          # das mais recentes para as antigas
+            total += len(m.content)
+            if total > limite:
                 break
-            context.append(m.to_dict())
-            total_chars += msg_chars
+            escolhidas.append(m.to_dict())
 
-        return context
+        return list(reversed(escolhidas))
+    
+    # ----------------------------------------------------------
+    # PERSISTÊNCIA EM DISCO
+    # ----------------------------------------------------------
+
+    def _salvar(self):
+        if not self._arquivo:
+            return
+
+        try:
+            os.makedirs(os.path.dirname(self._arquivo), exist_ok=True)
+
+            with open(self._arquivo, "w", encoding="utf-8") as f:
+                json.dump(
+                    [
+                        {
+                            "role":      m.role,
+                            "content":   m.content,
+                            "score":     m.score,
+                            "timestamp": m.timestamp,
+                        }
+                        for m in self._messages
+                    ],
+                    f, ensure_ascii=False, indent=2
+                )
+        except Exception as e:
+            print(f"[STM] erro ao salvar: {e}")
+
+    def _carregar(self):
+        if not self._arquivo:
+            return
+
+        try:
+            with open(self._arquivo, encoding="utf-8") as f:
+                self._messages = [Message(**d) for d in json.load(f)]
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"[STM] erro ao carregar: {e}")
 
     # ----------------------------------------------------------
     # LEITURA
@@ -262,18 +320,46 @@ class ShortTermMemory:
             if m.role == "assistant":
                 return m.content
         return None
+    
+    
+    def remover_ultima_interacao(self) -> bool:
+        """
+        Remove a última resposta do assistente e a pergunta
+        imediatamente anterior, se houver.
+
+        Retorna True se encontrou e removeu uma resposta.
+        """
+        if not self._messages:
+            return False
+
+        # A última mensagem precisa ser uma resposta do assistente.
+        if self._messages[-1].role != "assistant":
+            return False
+
+        self._messages.pop()
+
+        # Remove a pergunta que originou essa resposta,
+        # desde que seja a mensagem imediatamente anterior.
+        if self._messages and self._messages[-1].role == "user":
+            self._messages.pop()
+
+        self._salvar()
+        return True
+
 
     # ----------------------------------------------------------
     # CONTROLE DE SESSÃO
     # ----------------------------------------------------------
 
     def is_expired(self) -> bool:
-        return (time.time() - self._last_interaction) > self.ttl_seconds
+        # A conversa nunca expira.
+        return False
 
     def clear(self):
         self._messages         = []
         self._summary          = ""
         self._last_interaction = time.time()
+        self._salvar()
 
     # ----------------------------------------------------------
     # DIAGNÓSTICO
@@ -289,7 +375,7 @@ class ShortTermMemory:
         mins_idle = (time.time() - self._last_interaction) / 60
         return (
             f"ShortTermMemory("
-            f"messages={len(self._messages)}/{self.max_messages}, "
+            f"messages={len(self._messages)}, "
             f"has_summary={bool(self._summary)}, "
             f"idle={mins_idle:.1f}min)"
         )

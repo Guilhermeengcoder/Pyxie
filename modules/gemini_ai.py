@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from google import genai
+from core.usage import registrar_headers
 
 
 # ================================================================
@@ -103,6 +104,7 @@ def perguntar_gemini(comando: str, memoria: str = "") -> str:
         interaction = client.interactions.create(
             model=GEMINI_MODEL,
             input=prompt,
+            tools=[{"type": "google_search"}],
         )
 
         return (

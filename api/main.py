@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from core.brain import brain
+from core import usage
 
 app = FastAPI(title="PYXIE API")
 
@@ -19,9 +20,10 @@ class MensagemHistorico(BaseModel):
 
 class Pergunta(BaseModel):
     mensagem: str = ""
-    conversa_id: Optional[str] = None
-    historico: List[MensagemHistorico] = []
-    imagem: Optional[str] = None    # data URL: "data:image/jpeg;base64,..."
+    chat_id: str = "default"
+    # O front-end ainda envia isso; por enquanto o brain não usa.
+    historico: Optional[List[MensagemHistorico]] = None
+    imagem: Optional[str] = None
 
 
 @app.post("/perguntar")
@@ -37,18 +39,47 @@ def perguntar(pergunta: Pergunta):
     if not pergunta.mensagem.strip() and not pergunta.imagem:
         raise HTTPException(status_code=400, detail="Mensagem vazia.")
 
-    # Garante que a PYXIE está usando o contexto DESTA conversa
-    brain.selecionar_conversa(
-        pergunta.conversa_id,
-        [{"role": m.role, "content": m.content} for m in pergunta.historico],
-    )
+    usage.iniciar_requisicao()
 
     if pergunta.imagem:
-        resposta = brain.processar_imagem(pergunta.mensagem, pergunta.imagem)
+        resposta = brain.processar_imagem(
+            pergunta.mensagem,
+            pergunta.imagem,
+            chat_id=pergunta.chat_id,
+        )
     else:
-        resposta = brain.process(pergunta.mensagem)
+        resposta = brain.process(pergunta.mensagem, chat_id=pergunta.chat_id)
 
-    return {"resposta": resposta}
+    return {"resposta": resposta, "uso": usage.ultimo()}
+
+
+
+@app.post("/regenerar/{chat_id}")
+def regenerar_resposta(chat_id: str):
+    resultado = brain.regenerar(chat_id=chat_id)
+
+    if not resultado["ok"]:
+        raise HTTPException(
+            status_code=400,
+            detail=resultado["erro"]
+        )
+
+    return {
+        "resposta": resultado["resposta"],
+        "uso": usage.ultimo()
+    }
+
+
+
+@app.delete("/chat/{chat_id}")
+def encerrar_chat(chat_id: str):
+    brain.sessions.delete(chat_id)
+    return {"ok": True}
+
+
+@app.get("/uso")
+def uso():
+    return usage.ultimo()
 
 
 app.mount(

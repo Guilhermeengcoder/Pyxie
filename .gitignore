@@ -6,3 +6,4 @@ data/*.db-wal
 data/*.db-shm
 data/knowledge.json
 data/reminders.json
+memory.json

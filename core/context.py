@@ -152,6 +152,32 @@ class Context:
         self._intencao_atual = TipoIntencao.DESCONHECIDO
         self._msg_atual      = ""
         self._pessoa         = None
+        
+        
+    
+    def criar_snapshot(self) -> dict:
+        """Guarda o estado atual do contexto."""
+        return {
+            "current_topic": self.current_topic,
+            "history": self.history.copy(),
+            "entity": self.entity,
+            "last_intent": self.last_intent,
+            "intencao_atual": self._intencao_atual,
+            "msg_atual": self._msg_atual,
+            "pessoa": self._pessoa,
+        }
+
+    def restaurar_snapshot(self, snapshot: dict):
+        """Restaura um estado anterior do contexto."""
+        self.current_topic = snapshot["current_topic"]
+        self.history = snapshot["history"].copy()
+        self.entity = snapshot["entity"]
+        self.last_intent = snapshot["last_intent"]
+        self._intencao_atual = snapshot["intencao_atual"]
+        self._msg_atual = snapshot["msg_atual"]
+        self._pessoa = snapshot["pessoa"]
+ 
+        
 
     def get(self, key, default=None):
-        return getattr(self, key, default)
+        return getattr(self, key, default)  

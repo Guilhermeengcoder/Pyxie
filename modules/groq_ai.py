@@ -1,12 +1,13 @@
+
 from groq import Groq
 from dotenv import load_dotenv
 import os
 
-from modules.groq_uso import registrar_headers
+from core.usage import registrar_headers
 
 load_dotenv()
 
-MAX_MEMORY_CHARS = 1000
+MAX_MEMORY_CHARS = 1500
 GROQ_MODEL = "openai/gpt-oss-120b"
 
 api_key = os.getenv("GROQ_API_KEY")
@@ -16,7 +17,6 @@ client = Groq(api_key=api_key)
 
 
 def _montar_prompt(comando: str, memoria: str) -> str:
-    memoria = memoria[-MAX_MEMORY_CHARS:]
 
     tem_historico = len(memoria.strip()) > 0
 
@@ -45,6 +45,8 @@ Regras:
 - NÃO cumprimente o usuário se já houver histórico de conversa
 - Continue a conversa naturalmente sem repetir saudações
 - Não repita informações desnecessariamente, mas pode retomá-las quando forem relevantes para responder ou continuar a conversa
+-Sempre se refira ao memory.json como sendo a sua própria memoria
+-Sempre se refira a si mesma como sendo pyxie
 {instrucao_saudacao}
 - Analise o contexto completo antes de responder
 - Outras pessoas podem conversar com você — trate-as pelo nome que informarem
@@ -76,20 +78,24 @@ Segurança e privacidade:
 
 def perguntar_groq(comando: str, memoria: str = "") -> str:
     prompt = _montar_prompt(comando, memoria)
+
     try:
-        resposta_bruta = client.chat.completions.with_raw_response.create(
-            model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}]
+       
+        raw = client.chat.completions.with_raw_response.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            tools=[{"type": "browser_search"}],
+            tool_choice="auto"
         )
 
-        # Guarda o uso/limites informados nesta resposta (sem custo extra:
-        # sao cabecalhos da mesma chamada, nao uma requisicao a parte)
+
         try:
-            registrar_headers(resposta_bruta.headers, GROQ_MODEL)
+            registrar_headers(raw.headers, GROQ_MODEL)
         except Exception:
             pass  # nunca deixa isso quebrar a resposta principal
 
-        response = resposta_bruta.parse()
-        return response.choices[0].message.content
+        response = raw.parse()
+        return response.choices[0].message.content or ""
 
     except Exception as e:
         print(f"[Groq] {e}")
