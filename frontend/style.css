@@ -1309,3 +1309,111 @@ body.uso-fechada .painel-uso {
         transition: none;
     }
 }
+
+/* ================================
+   MICROFONE E LEITURA EM VOZ ALTA
+================================ */
+
+.btn-input.gravando {
+    background: var(--acento);
+    color: #ffffff;
+    animation: gravando 1.2s infinite ease-in-out;
+}
+
+@keyframes gravando {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(139, 0, 0, 0.6); }
+    50%      { box-shadow: 0 0 0 8px rgba(139, 0, 0, 0); }
+}
+
+.message-action-button.falando {
+    color: #d14b4b;
+    border-color: var(--borda);
+    background: var(--bg-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .btn-input.gravando { animation: none; }
+}
+
+
+/* Formatação Markdown das respostas da PYXIE */
+
+.conteudo-resposta strong {
+    font-weight: 700;
+}
+
+.conteudo-resposta em {
+    font-style: italic;
+}
+
+.conteudo-resposta .titulo-resposta {
+    margin: 16px 0 8px;
+    font-size: 1.1em;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.conteudo-resposta .lista-resposta {
+    margin: 8px 0 12px;
+    padding-left: 24px;
+}
+
+.conteudo-resposta .lista-resposta li {
+    padding-left: 4px;
+    margin: 4px 0;
+}
+
+.conteudo-resposta a {
+    color: #e57373;
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+}
+
+.conteudo-resposta a:hover {
+    color: #ff9999;
+}
+
+.conteudo-resposta code:not(.code-block code) {
+    padding: 2px 5px;
+    border: 1px solid #303030;
+    border-radius: 5px;
+    background: #171717;
+    font-family: Consolas, monospace;
+    font-size: 0.92em;
+}
+
+
+/* Tabelas e divisórias das respostas da PYXIE */
+
+.tabela-resposta {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 18px;
+    display: block;
+    overflow-x: auto;
+    border-radius: 8px;
+}
+
+.tabela-resposta th,
+.tabela-resposta td {
+    padding: 10px 12px;
+    text-align: left;
+    border: 1px solid var(--borda, #333333);
+    min-width: 90px;
+}
+
+.tabela-resposta th {
+    background: var(--bg-ativo, #1e1e1e);
+    font-weight: 700;
+}
+
+.tabela-resposta td {
+    background: var(--bg-input, #151515);
+}
+
+.texto-resposta + hr,
+hr {
+    border: 0;
+    border-top: 1px solid var(--borda, #333333);
+    margin: 16px 0;
+}

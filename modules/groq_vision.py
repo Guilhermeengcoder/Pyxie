@@ -15,7 +15,7 @@ import os
 import re
 
 from modules.groq_ai import client, _montar_prompt
-from modules.groq_uso import registrar_headers
+from core.usage import registrar_headers
 
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 

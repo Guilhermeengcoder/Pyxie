@@ -1,3 +1,4 @@
+
 {
   "schema_version": 1,
   "description": "Memoria de referencia persistente da PYXIE. Contem informacoes relativamente estaveis, objetivos e preferencias. Nao substitui o contexto recente da conversa.",
@@ -141,11 +142,11 @@
   "personal_context": {
     "family_and_companion_names": [
       {
-        "name": "Simone De Souza Queiroz",
+        "name": "Simone",
         "relationship": "Mae"
       },
       {
-        "name": "Henrique De Souza Queiroz",
+        "name": "Henrique",
         "relationship": "Irmao"
       },
       {

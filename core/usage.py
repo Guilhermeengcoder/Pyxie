@@ -1,4 +1,5 @@
 import threading
+import time
 
 _lock = threading.Lock()
 
@@ -10,6 +11,7 @@ _ultimo = {
     "requests_limite": None,
     "requests_restantes": None,
     "requests_reset": None,
+    "atualizado_em": None,
 }
 
 
@@ -37,9 +39,19 @@ def registrar_headers(headers, modelo):
             "requests_limite": _int(g("x-ratelimit-limit-requests")),
             "requests_restantes": _int(g("x-ratelimit-remaining-requests")),
             "requests_reset": g("x-ratelimit-reset-requests"),
+            "atualizado_em": time.time(),
         })
 
 
 def ultimo():
     with _lock:
-        return dict(_ultimo)
+        dados = dict(_ultimo)
+
+    # Quantos segundos se passaram desde que esse dado foi registrado
+    # (o front desconta isso do tempo de reset).
+    if dados["atualizado_em"] is not None:
+        dados["idade_s"] = max(0.0, time.time() - dados["atualizado_em"])
+    else:
+        dados["idade_s"] = 0.0
+
+    return dados

@@ -92,6 +92,32 @@ def normalizar(texto):
     return texto
 
 
+def parece_codigo_ou_prompt_extenso(texto: str) -> bool:
+    """Evita dividir ou normalizar código e mensagens longas antes da IA."""
+    texto = str(texto or "")
+    if len(texto) >= 1200 or "```" in texto or "~~~" in texto:
+        return True
+
+    padroes_codigo = (
+        r"(?m)^\s*(?:const|let|var|function|async\s+function|class|import|export)\s+",
+        r"(?m)^\s*(?:def|class|from|import)\s+",
+        r"(?m)^\s*(?:if|for|while|try|except|return)\b.*:",
+        r"(?m)^\s*<\s*(?:!doctype|html|script|div|body)\b",
+        r"(?m)^\s*[{[]\s*[\"']?[\w-]+[\"']?\s*:",
+        r"\b(?:console\.log|document\.|window\.|addEventListener|=>)\b",
+    )
+    return any(re.search(padrao, texto, re.IGNORECASE) for padrao in padroes_codigo)
+
+
+def pedido_expresso_desfazer(texto: str) -> bool:
+    """Só considera desfazer quando a mensagem realmente pede essa ação."""
+    normalizado = normalizar(texto)
+    return bool(re.match(
+        r"^(?:pyxie\s+)?(?:desfaca|desfazer|desfaz|reverta|volte|cancele)\b.*\b(?:alteracao|mudanca|edicao|memoria|json|ultima)\b",
+        normalizado,
+    ))
+
+
 def limpar_pergunta(pergunta):
     remover = [
         "me fale sobre",
@@ -260,7 +286,7 @@ class Brain:
     def _editar_memoria_fixa(self, message):
         norm = normalizar(message)
 
-        if memory_json.eh_pedido_de_desfazer(norm):
+        if pedido_expresso_desfazer(message):
             if memory_json.desfazer():
                 self.memoria_fixa = memory_json.carregar()
                 return "Pronto, desfiz a última alteração na memória fixa."
@@ -304,22 +330,24 @@ class Brain:
 
     def process(self, message, chat_id: str = "default"):
         sessao = self.sessions.get(chat_id)
+        texto = str(message or "")
 
+        # Código e prompts extensos devem chegar inteiros ao modelo.
         if (
-            not memory_json.eh_pedido_de_edicao(normalizar(message))
-            and tem_multiplas_tarefas(message)
+            not parece_codigo_ou_prompt_extenso(texto)
+            and not memory_json.eh_pedido_de_edicao(normalizar(texto))
+            and not pedido_expresso_desfazer(texto)
+            and tem_multiplas_tarefas(texto)
         ):
             respostas = []
-
-            for tarefa in dividir_tarefas(message):
+            for tarefa in dividir_tarefas(texto):
                 resp = self._processar_unica(tarefa, sessao)
                 if resp:
                     respostas.append(resp)
-
             if respostas:
                 return "\n".join(respostas)
 
-        return self._processar_unica(message, sessao)
+        return self._processar_unica(texto, sessao)
 
     # ----------------------------------------------------------
     # IMAGEM (anexo ou câmera) — chamado pela API quando há imagem
@@ -361,39 +389,40 @@ class Brain:
     # PROCESSAMENTO DE UMA ÚNICA TAREFA
     # ----------------------------------------------------------
 
-    
     def _processar_unica(self, message, sessao: ChatSession):
-
         if sessao.stm.is_expired():
             sessao.stm.clear()
             sessao.context.clear()
 
-        # Salva o contexto anterior a esta mensagem.
-        sessao.context_anterior = sessao.context.criar_snapshot()
+        mensagem_original = str(message or "").strip()
+        mensagem_para_ia = mensagem_original
 
-        # Uma nova pergunta invalida os dados de regeneração anteriores.
-        sessao.ultima_pergunta = None
-        sessao.regeneracao_pergunta = None
-        sessao.regeneracao_contexto = None
+        # Remove somente um prefixo explícito de chamada; não remove a palavra
+        # "pyxie" quando ela é a mensagem inteira nem altera o código recebido.
+        prefixo = re.match(r"^\s*pyxie\s*[, :]\s*", mensagem_para_ia, re.IGNORECASE)
+        if prefixo:
+            mensagem_para_ia = mensagem_para_ia[prefixo.end():]
 
-        original_message = normalizar(message)
+        original_message = normalizar(mensagem_para_ia)
+        conteudo_extenso = parece_codigo_ou_prompt_extenso(mensagem_para_ia)
 
-        if original_message.startswith("pyxie"):
-            original_message = original_message.replace("pyxie", "", 1).strip()
+        if conteudo_extenso:
+            # Não passe código por correção linguística: isso pode corrompê-lo.
+            processed_message = mensagem_para_ia
+        else:
+            resultado = self.language.processar(original_message)
+            processed_message = resultado.get("corrigido") or original_message
 
-        resultado = self.language.processar(original_message)
-        processed_message = resultado["corrigido"]
-
-        sessao.stm.add_message("user", processed_message)
-        sessao.context.add_message(processed_message)
-
+        # Mantém a mensagem original na memória de conversa.
+        sessao.stm.add_message("user", mensagem_original)
+        sessao.context.add_message(mensagem_original)
 
         # ------------------------------------------------------
         # EDIÇÃO DA MEMÓRIA FIXA (memory.json)
         # ------------------------------------------------------
         if (
             memory_json.eh_pedido_de_edicao(original_message)
-            or memory_json.eh_pedido_de_desfazer(original_message)
+            or pedido_expresso_desfazer(mensagem_original)
         ):
             resposta_final = self.personality.aplicar(self._editar_memoria_fixa(message))
             self._finalizar(sessao, message, resposta_final)
@@ -491,11 +520,19 @@ class Brain:
             self._finalizar(sessao, message, resposta_final)
             return resposta_final
 
+        # Uma chamada isolada pelo nome da assistente não deve virar texto vazio.
+        if original_message.strip() == "pyxie":
+            resposta_final = self.personality.aplicar(
+                f"Sou {obter_nome()}, sua assistente pessoal. Como posso ajudar?"
+            )
+            self._finalizar(sessao, mensagem_original, resposta_final)
+            return resposta_final
+
         # --------------------------------------------------
         # DECISÃO CENTRAL
         # --------------------------------------------------
 
-        decisao = decidir(original_message, sessao.context)
+        decisao = decidir(original_message, sessao.context) if not conteudo_extenso else {"destino": None}
         categoria = decisao.get("destino")
         modulo = categoria
 
@@ -506,7 +543,7 @@ class Brain:
                 if getattr(m, "category", None) == categoria:
                     modulos_candidatos.append(m)
 
-        if not modulos_candidatos:
+        if not modulos_candidatos and not conteudo_extenso:
             modulos_candidatos = list(self.modules.values())
 
         for modulo_instancia in modulos_candidatos:
@@ -640,7 +677,7 @@ class Brain:
         # CONHECIMENTO LOCAL
         # --------------------------------------------------
 
-        response = buscar_conhecimento(processed_message)
+        response = None if conteudo_extenso else buscar_conhecimento(processed_message)
         if response:
             resposta_final = self.personality.aplicar(response)
             self._finalizar(sessao, message, resposta_final)
@@ -687,103 +724,100 @@ class Brain:
         ).strip()
 
         try:
-            response = perguntar_llm(original_message, contexto_final)
-        except Exception:
+            response = perguntar_llm(mensagem_para_ia, contexto_final)
+        except Exception as erro:
+            print(f"[ERRO LLM no fallback]: {erro}")
             response = None
 
-        
-        if response:
+        if isinstance(response, str) and response.strip():
             resposta_final = self.personality.aplicar(response)
-
-            extrair_e_salvar(
-                message,
-                topico=sessao.context.get_topic()
-            )
-
-            # Guarda o prompt e o contexto exatos usados pela IA.
-            sessao.regeneracao_pergunta = original_message
+            extrair_e_salvar(mensagem_original, topico=sessao.context.get_topic())
+            sessao.regeneracao_pergunta = mensagem_para_ia
             sessao.regeneracao_contexto = contexto_final
-
-            self._finalizar(sessao, message, resposta_final)
+            self._finalizar(sessao, mensagem_original, resposta_final)
             return resposta_final
 
         resposta_final = self.personality.aplicar(
             "Ainda não encontrei uma resposta para isso."
         )
-        self._finalizar(sessao, message, resposta_final)
+        self._finalizar(sessao, mensagem_original, resposta_final)
         return resposta_final
 
     # ----------------------------------------------------------
     # FINALIZAÇÃO — STM
     # ----------------------------------------------------------
 
-    
     def _finalizar(self, sessao: ChatSession, user_input: str, resposta: str):
         sessao.stm.add_message("assistant", resposta)
         sessao.ultima_pergunta = user_input
 
-    
-    
-    
-    
-    def regenerar(self, chat_id: str = "default"):
-        """Regenera a última resposta do fallback da IA."""
-        sessao = self.sessions.get(chat_id)
+    def regenerar(self, chat_id: str = "default") -> dict:
+        """Regenera a última resposta do fallback e SEMPRE retorna um dicionário.
 
-        pergunta = sessao.regeneracao_pergunta
-        contexto = sessao.regeneracao_contexto
-
-        if pergunta is None or contexto is None:
-            return {
-                "ok": False,
-                "erro": "Esta conversa não possui uma resposta regenerável."
-            }
-
-        mensagens = sessao.stm._messages
-
-        # Confirma que a pergunta e a resposta esperadas
-        # continuam no final do histórico.
-        if (
-            len(mensagens) < 2
-            or mensagens[-1].role != "assistant"
-            or mensagens[-2].role != "user"
-        ):
-            return {
-                "ok": False,
-                "erro": "O histórico mudou. Envie uma nova mensagem."
-            }
-
+        O endpoint da API consulta resultado["ok"], portanto esta função não
+        deve retornar diretamente o texto gerado pelo modelo.
+        """
         try:
-            response = perguntar_llm(pergunta, contexto)
-        except Exception as erro:
-            print(f"[ERRO ao regenerar resposta]: {erro}")
-            response = None
+            sessao = self.sessions.get(chat_id)
+            pergunta = getattr(sessao, "regeneracao_pergunta", None)
+            contexto = getattr(sessao, "regeneracao_contexto", None)
 
-        if not response:
+            if not pergunta or contexto is None:
+                return {
+                    "ok": False,
+                    "erro": "Esta conversa não possui uma resposta regenerável.",
+                }
+
+            mensagens = getattr(sessao.stm, "_messages", None)
+            if not mensagens or len(mensagens) < 2:
+                return {
+                    "ok": False,
+                    "erro": "O histórico mudou. Envie uma nova mensagem.",
+                }
+
+            ultima = mensagens[-1]
+            anterior = mensagens[-2]
+            if (
+                getattr(ultima, "role", None) != "assistant"
+                or getattr(anterior, "role", None) != "user"
+            ):
+                return {
+                    "ok": False,
+                    "erro": "O histórico mudou. Envie uma nova mensagem.",
+                }
+
+            try:
+                response = perguntar_llm(pergunta, contexto)
+            except Exception as erro:
+                print(f"[ERRO ao regenerar resposta]: {erro}")
+                response = None
+
+            if not isinstance(response, str) or not response.strip():
+                return {
+                    "ok": False,
+                    "erro": "Não consegui gerar outra resposta agora.",
+                }
+
+            resposta_final = self.personality.aplicar(response)
+            ultima.content = resposta_final
+
+            salvar = getattr(sessao.stm, "_salvar", None)
+            if callable(salvar):
+                salvar()
+
+            sessao.ultima_pergunta = None
+            sessao.regeneracao_pergunta = None
+            sessao.regeneracao_contexto = None
+            sessao.context_anterior = None
+
+            return {"ok": True, "resposta": resposta_final}
+
+        except Exception as erro:
+            print(f"[ERRO interno em regenerar]: {erro}")
             return {
                 "ok": False,
-                "erro": "Não consegui gerar outra resposta agora."
+                "erro": "Ocorreu um erro ao regenerar a resposta.",
             }
-
-        resposta_final = self.personality.aplicar(response)
-
-        # Substitui somente a resposta; a pergunta permanece intacta.
-        mensagens[-1].content = resposta_final
-        sessao.stm._salvar()
-
-        # Impede a repetição acidental da mesma regeneração.
-        sessao.ultima_pergunta = None
-        sessao.regeneracao_pergunta = None
-        sessao.regeneracao_contexto = None
-        sessao.context_anterior = None
-
-        return {
-            "ok": True,
-            "resposta": resposta_final
-        }
-
-
-
 
 
 # =============================================================

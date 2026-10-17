@@ -1,4 +1,3 @@
-
 // ========================================
 // ELEMENTOS
 // ========================================
@@ -14,9 +13,10 @@ const botaoLimpar = document.getElementById("limpar-tudo");
 const botaoMenu = document.getElementById("menu");
 const overlay = document.getElementById("overlay");
 
-// Imagem e câmera
+// Imagem, câmera e microfone
 const botaoAnexar = document.getElementById("anexar");
 const botaoCamera = document.getElementById("camera");
+const botaoMic = document.getElementById("microfone");
 const inputArquivo = document.getElementById("arquivo");
 const inputArquivoCamera = document.getElementById("arquivo-camera");
 const previa = document.getElementById("previa");
@@ -461,6 +461,21 @@ function criarIcone(nome) {
         );
     }
 
+    // Ícone de leitura em voz alta
+    if (nome === "ouvir") {
+        svg.append(
+            criarElemento("polygon", {
+                points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+            }),
+            criarElemento("path", {
+                d: "M19.07 4.93a10 10 0 0 1 0 14.14"
+            }),
+            criarElemento("path", {
+                d: "M15.54 8.46a5 5 0 0 1 0 7.07"
+            })
+        );
+    }
+
     return svg;
 }
 
@@ -484,9 +499,11 @@ function criarBotaoAcao(nomeIcone, descricao, classeAdicional = "") {
 }
 
 
-// ========================================
-// BLOCOS DE CÓDIGO NAS RESPOSTAS
-// ========================================
+
+/**
+ * BLOCOS DE CÓDIGO NAS RESPOSTAS
+ * Renderização segura de código e Markdown.
+ */
 
 // Cria um botão de cópia para cada bloco de código.
 function criarBlocoCodigo(codigo, linguagem) {
@@ -509,7 +526,6 @@ function criarBlocoCodigo(codigo, linguagem) {
     copiar.addEventListener("click", async () => {
         try {
             await copiarTexto(codigo);
-
             copiar.textContent = "Copiado!";
 
             setTimeout(() => {
@@ -527,7 +543,7 @@ function criarBlocoCodigo(codigo, linguagem) {
     const pre = document.createElement("pre");
     const code = document.createElement("code");
 
-    // textContent impede que conteúdo retornado pela IA seja interpretado como HTML.
+    // O conteúdo da IA nunca é interpretado como HTML.
     code.textContent = codigo;
 
     if (linguagem) {
@@ -535,56 +551,367 @@ function criarBlocoCodigo(codigo, linguagem) {
     }
 
     pre.appendChild(code);
-
     bloco.appendChild(cabecalho);
     bloco.appendChild(pre);
 
     return bloco;
 }
 
-// Interpreta cercas Markdown de código sem usar innerHTML.
-// O conteúdo da resposta é sempre inserido como texto, de forma segura.
-function renderizarTextoComCodigo(conteudo, destino) {
-    const texto = String(conteudo ?? "");
-    const regex = /```([^\n`]*)\r?\n([\s\S]*?)```/g;
+
+/**
+ * Renderiza Markdown inline sem inserir HTML recebido da IA.
+ * Suporta negrito, itálico, código inline, links e URLs.
+ */
+function renderizarMarkdownInline(texto, destino) {
+    const conteudo = String(texto ?? "");
+
+    const padrao =
+        /`([^`\n]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*(.+?)\*\*|__(.+?)__|\*(?!\s)(.+?)(?<!\s)\*|(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)|(https?:\/\/[^\s<]+)/g;
 
     let posicao = 0;
     let resultado;
 
-    while ((resultado = regex.exec(texto)) !== null) {
-        // Texto comum que aparece antes do bloco de código
+    while ((resultado = padrao.exec(conteudo)) !== null) {
         if (resultado.index > posicao) {
-            const parteTexto = document.createElement("div");
-
-            parteTexto.classList.add("texto-resposta");
-            parteTexto.textContent = texto.slice(posicao, resultado.index);
-            parteTexto.style.whiteSpace = "pre-wrap";
-            parteTexto.style.overflowWrap = "anywhere";
-
-            destino.appendChild(parteTexto);
+            destino.appendChild(
+                document.createTextNode(
+                    conteudo.slice(posicao, resultado.index)
+                )
+            );
         }
 
-        const linguagem = resultado[1].trim().split(/\s+/)[0] || "";
-        const codigo = resultado[2].replace(/\n$/, "");
+        const trecho = resultado[0];
 
-        destino.appendChild(criarBlocoCodigo(codigo, linguagem));
+        if (resultado[1] !== undefined) {
+            const codigo = document.createElement("code");
+            codigo.textContent = resultado[1];
+            destino.appendChild(codigo);
+        } else if (
+            resultado[2] !== undefined &&
+            resultado[3] !== undefined
+        ) {
+            adicionarLinkSeguro(resultado[3], resultado[2], destino);
+        } else if (
+            resultado[4] !== undefined ||
+            resultado[5] !== undefined
+        ) {
+            const negrito = document.createElement("strong");
+            negrito.textContent = resultado[4] ?? resultado[5];
+            destino.appendChild(negrito);
+        } else if (
+            resultado[6] !== undefined ||
+            resultado[7] !== undefined
+        ) {
+            const italico = document.createElement("em");
+            italico.textContent = resultado[6] ?? resultado[7];
+            destino.appendChild(italico);
+        } else if (resultado[8] !== undefined) {
+            adicionarLinkSeguro(trecho, trecho, destino);
+        }
 
-        posicao = regex.lastIndex;
+        posicao = padrao.lastIndex;
     }
 
-    // Texto que aparece depois do último bloco
-    if (posicao < texto.length) {
-        const parteTexto = document.createElement("div");
+    if (posicao < conteudo.length) {
+        destino.appendChild(
+            document.createTextNode(conteudo.slice(posicao))
+        );
+    }
+}
 
-        parteTexto.classList.add("texto-resposta");
-        parteTexto.textContent = texto.slice(posicao);
-        parteTexto.style.whiteSpace = "pre-wrap";
-        parteTexto.style.overflowWrap = "anywhere";
 
-        destino.appendChild(parteTexto);
+/**
+ * Só cria links HTTP/HTTPS válidos.
+ */
+function adicionarLinkSeguro(url, rotulo, destino) {
+    try {
+        const endereco = new URL(url);
+
+        if (!["http:", "https:"].includes(endereco.protocol)) {
+            destino.appendChild(document.createTextNode(rotulo));
+            return;
+        }
+
+        const link = document.createElement("a");
+        link.href = endereco.href;
+        link.textContent = rotulo;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+
+        destino.appendChild(link);
+    } catch (_) {
+        destino.appendChild(document.createTextNode(rotulo));
+    }
+}
+
+
+/**
+ * Renderiza Markdown, listas, títulos e blocos de código.
+ */
+
+function renderizarTextoComCodigo(conteudo, destino) {
+    const texto = String(conteudo ?? "");
+    const linhas = texto.split(/\r?\n/);
+
+    let blocoCodigo = false;
+    let linguagemCodigo = "";
+    let linhasCodigo = [];
+    let paragrafo = [];
+    let listaAtual = null;
+    let tabelaAtual = null;
+
+    function fecharParagrafo() {
+        if (!paragrafo.length) return;
+
+        const elemento = document.createElement("div");
+        elemento.classList.add("texto-resposta");
+
+        paragrafo.forEach((linha, indice) => {
+            if (indice > 0) {
+                elemento.appendChild(document.createElement("br"));
+            }
+
+            renderizarMarkdownInline(linha, elemento);
+        });
+
+        destino.appendChild(elemento);
+        paragrafo = [];
     }
 
-    // Resposta vazia: mantém um elemento no lugar do conteúdo.
+    function fecharLista() {
+        if (!listaAtual) return;
+
+        destino.appendChild(listaAtual);
+        listaAtual = null;
+    }
+
+    function fecharTabela() {
+        if (!tabelaAtual) return;
+
+        destino.appendChild(tabelaAtual);
+        tabelaAtual = null;
+    }
+
+    function fecharBlocosTexto() {
+        fecharParagrafo();
+        fecharLista();
+        fecharTabela();
+    }
+
+    function adicionarLinhaNaLista(linha, numerada) {
+        fecharParagrafo();
+        fecharTabela();
+
+        const tag = numerada ? "ol" : "ul";
+
+        if (
+            listaAtual &&
+            listaAtual.tagName.toLowerCase() !== tag
+        ) {
+            fecharLista();
+        }
+
+        if (!listaAtual) {
+            listaAtual = document.createElement(tag);
+            listaAtual.classList.add("lista-resposta");
+        }
+
+        const item = document.createElement("li");
+        renderizarMarkdownInline(linha, item);
+        listaAtual.appendChild(item);
+    }
+
+    function separarCelulas(linha) {
+        let conteudoLinha = linha.trim();
+
+        // Aceita tabelas com ou sem barras nas extremidades.
+        if (conteudoLinha.startsWith("|")) {
+            conteudoLinha = conteudoLinha.slice(1);
+        }
+
+        if (conteudoLinha.endsWith("|")) {
+            conteudoLinha = conteudoLinha.slice(0, -1);
+        }
+
+        return conteudoLinha.split("|").map(
+            celula => celula.trim()
+        );
+    }
+
+    function ehSeparadorTabela(linha) {
+        const celulas = separarCelulas(linha);
+
+        return (
+            celulas.length > 0 &&
+            celulas.every(celula =>
+                /^:?-{3,}:?$/.test(celula.replace(/\s/g, ""))
+            )
+        );
+    }
+
+    function ehLinhaTabela(linha) {
+        return linha.includes("|");
+    }
+
+    function iniciarTabela(cabecalho) {
+        fecharParagrafo();
+        fecharLista();
+
+        tabelaAtual = document.createElement("table");
+        tabelaAtual.classList.add("tabela-resposta");
+
+        const thead = document.createElement("thead");
+        const tr = document.createElement("tr");
+
+        separarCelulas(cabecalho).forEach(textoCelula => {
+            const th = document.createElement("th");
+            renderizarMarkdownInline(textoCelula, th);
+            tr.appendChild(th);
+        });
+
+        thead.appendChild(tr);
+        tabelaAtual.appendChild(thead);
+
+        tabelaAtual.appendChild(document.createElement("tbody"));
+    }
+
+    function adicionarLinhaTabela(linha) {
+        if (!tabelaAtual) return;
+
+        const tbody = tabelaAtual.querySelector("tbody");
+        const tr = document.createElement("tr");
+        const cabecalhos = tabelaAtual.querySelectorAll("thead th");
+        const celulas = separarCelulas(linha);
+
+        cabecalhos.forEach((_, indice) => {
+            const td = document.createElement("td");
+            renderizarMarkdownInline(celulas[indice] ?? "", td);
+            tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+    }
+
+    for (let i = 0; i < linhas.length; i++) {
+        const linha = linhas[i];
+
+        // Blocos de código
+        const cerca = linha.match(/^ {0,3}```\s*([^`]*)$/);
+
+        if (cerca) {
+            fecharBlocosTexto();
+
+            if (!blocoCodigo) {
+                blocoCodigo = true;
+                linguagemCodigo =
+                    cerca[1].trim().split(/\s+/)[0] || "";
+                linhasCodigo = [];
+            } else {
+                destino.appendChild(
+                    criarBlocoCodigo(
+                        linhasCodigo.join("\n"),
+                        linguagemCodigo
+                    )
+                );
+
+                blocoCodigo = false;
+                linguagemCodigo = "";
+                linhasCodigo = [];
+            }
+
+            continue;
+        }
+
+        if (blocoCodigo) {
+            linhasCodigo.push(linha);
+            continue;
+        }
+
+        // Tabela Markdown: cabeçalho seguido por separador.
+        if (
+            ehLinhaTabela(linha) &&
+            i + 1 < linhas.length &&
+            ehSeparadorTabela(linhas[i + 1])
+        ) {
+            fecharBlocosTexto();
+            iniciarTabela(linha);
+            i++; // Ignora a linha de separação.
+            continue;
+        }
+
+        // Linhas seguintes da tabela.
+        if (tabelaAtual && ehLinhaTabela(linha)) {
+            adicionarLinhaTabela(linha);
+            continue;
+        }
+
+        fecharTabela();
+
+        if (!linha.trim()) {
+            fecharBlocosTexto();
+            continue;
+        }
+
+        // Linha divisória: ---, ***, ___ ou com espaços.
+        if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(linha)) {
+            fecharBlocosTexto();
+            destino.appendChild(document.createElement("hr"));
+            continue;
+        }
+
+        // Títulos
+        const titulo = linha.match(
+            /^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$/
+        );
+
+        if (titulo) {
+            fecharBlocosTexto();
+
+            const nivel = titulo[1].length;
+            const elemento = document.createElement("h" + nivel);
+            elemento.classList.add("titulo-resposta");
+
+            renderizarMarkdownInline(titulo[2], elemento);
+            destino.appendChild(elemento);
+            continue;
+        }
+
+        // Listas numeradas
+        const itemNumerado = linha.match(
+            /^\s{0,3}\d+[.)]\s+(.+)$/
+        );
+
+        if (itemNumerado) {
+            adicionarLinhaNaLista(itemNumerado[1], true);
+            continue;
+        }
+
+        // Listas com marcadores
+        const itemMarcado = linha.match(
+            /^\s{0,3}[-*+]\s+(.+)$/
+        );
+
+        if (itemMarcado) {
+            adicionarLinhaNaLista(itemMarcado[1], false);
+            continue;
+        }
+
+        fecharLista();
+        paragrafo.push(linha);
+    }
+
+    fecharBlocosTexto();
+
+    // Fecha um bloco de código que não tenha cerca final.
+    if (blocoCodigo) {
+        destino.appendChild(
+            criarBlocoCodigo(
+                linhasCodigo.join("\n"),
+                linguagemCodigo
+            )
+        );
+    }
+
     if (!texto) {
         const vazio = document.createElement("div");
         vazio.classList.add("texto-resposta");
@@ -663,6 +990,35 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
 
         acoes.appendChild(copiar);
 
+        // Ler a resposta em voz alta (clicar de novo para parar)
+        if ("speechSynthesis" in window) {
+            const ouvir = criarBotaoAcao(
+                "ouvir",
+                "Ouvir resposta",
+                "botao-ouvir"
+            );
+
+            ouvir._texto = String(texto ?? "");
+
+            if (
+                typeof textoFalando !== "undefined" &&
+                textoFalando !== null &&
+                ouvir._texto === textoFalando
+            ) {
+                ouvir.classList.add("falando");
+            }
+
+            ouvir.addEventListener("click", () => {
+                if (textoFalando === ouvir._texto) {
+                    pararLeitura();
+                } else {
+                    falar(ouvir._texto);
+                }
+            });
+
+            acoes.appendChild(ouvir);
+        }
+
         // Regenerar somente quando esta for a última resposta salva.
         if (opcoes.permitirRegenerar === true && opcoes.conversaId) {
             const regenerar = criarBotaoAcao(
@@ -678,19 +1034,19 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
             acoes.appendChild(regenerar);
         }
 
-// Compartilhar esta resposta em redes sociais e aplicativos.
-if (opcoes.conversaId) {
-    const compartilhar = criarBotaoAcao(
-        "compartilhar",
-        "Compartilhar resposta"
-    );
+        // Compartilhar esta resposta em redes sociais e aplicativos.
+        if (opcoes.conversaId) {
+            const compartilhar = criarBotaoAcao(
+                "compartilhar",
+                "Compartilhar resposta"
+            );
 
-    compartilhar.addEventListener("click", () => {
-        abrirMenuCompartilhamento(String(texto ?? ""));
-    });
+            compartilhar.addEventListener("click", () => {
+                abrirMenuCompartilhamento(String(texto ?? ""));
+            });
 
-    acoes.appendChild(compartilhar);
-}
+            acoes.appendChild(compartilhar);
+        }
 
         mensagem.appendChild(textoMensagem);
         mensagem.appendChild(acoes);
@@ -736,6 +1092,11 @@ function renderizarMensagens() {
     if (pendenteId === conversa.id) {
         criarIndicador();
     }
+
+    // Atualiza o estado visual dos botões de voz.
+    if (typeof atualizarBotoesOuvir === "function") {
+        atualizarBotoesOuvir();
+    }
 }
 
 
@@ -772,6 +1133,9 @@ async function regenerarResposta(conversaId) {
         mostrarAviso("Não encontrei a pergunta que originou essa resposta.");
         return;
     }
+
+    // Interrompe eventual leitura antes de regenerar a resposta.
+    pararLeitura();
 
     pendenteId = conversa.id;
     definirCarregando(true);
@@ -852,6 +1216,7 @@ async function regenerarResposta(conversaId) {
         }
     }
 }
+
 
 // ========================================
 // COMPARTILHAMENTO DE RESPOSTAS
@@ -1226,6 +1591,7 @@ function abrirMenuCompartilhamento(texto) {
     fechar.focus();
 }
 
+
 // ========================================
 // INDICADOR DE PROCESSAMENTO
 // ========================================
@@ -1525,6 +1891,10 @@ function definirCarregando(carregando) {
     botao.disabled = carregando;
     botaoAnexar.disabled = carregando;
     botaoCamera.disabled = carregando;
+
+    if (botaoMic) {
+        botaoMic.disabled = carregando;
+    }
 }
 
 async function enviarMensagem() {
@@ -1541,6 +1911,14 @@ async function enviarMensagem() {
     if (!conversa) {
         return;
     }
+
+    // Registra se esta mensagem foi iniciada pelo microfone.
+    // A variável é consumida apenas quando existe uma mensagem válida para enviar.
+    const porVoz = vozPendente;
+    vozPendente = false;
+
+    // Evita que uma leitura anterior continue durante o envio.
+    pararLeitura();
 
     // Contexto: mensagens anteriores à atual.
     // Imagens antigas não são reenviadas: só o texto delas.
@@ -1634,6 +2012,12 @@ async function enviarMensagem() {
         }
     }
 
+    // Lê automaticamente somente as respostas de mensagens enviadas por voz,
+    // desde que a resposta tenha sido recebida e a conversa continue visível.
+    if (!deuErro && porVoz && visivel && aindaExiste && respostaTexto) {
+        falar(respostaTexto);
+    }
+
     // Volta o foco para o campo
     input.focus();
 }
@@ -1686,6 +2070,79 @@ function atualizarBarra(barraEl, restante, limite) {
     barraEl.classList.toggle("barra-critica", pct <= 10);
 }
 
+// ----- Contagem regressiva do reset de tokens -----
+
+let resetPrazo = null;      // momento (ms) em que os tokens resetam
+let resetLimite = null;     // limite total de tokens por minuto
+let timerReset = null;
+
+// Converte "28.327s", "1m30.5s", "250ms", "1h2m3s" em segundos.
+function paraSegundos(texto) {
+    if (!texto || typeof texto !== "string") return null;
+
+    const regex = /(\d+(?:\.\d+)?)(ms|h|m|s)/g;
+    const fator = { ms: 0.001, s: 1, m: 60, h: 3600 };
+
+    let total = 0;
+    let achou = false;
+    let r;
+
+    while ((r = regex.exec(texto)) !== null) {
+        total += parseFloat(r[1]) * fator[r[2]];
+        achou = true;
+    }
+
+    return achou ? total : null;
+}
+
+function formatarTempo(segundos) {
+    const s = Math.ceil(segundos);
+    if (s >= 60) {
+        return Math.floor(s / 60) + "m" + String(s % 60).padStart(2, "0") + "s";
+    }
+    return s + "s";
+}
+
+function tickReset() {
+    const elTexto = document.getElementById("uso-tokens-texto");
+    const elBarra = document.getElementById("uso-tokens-barra");
+    const elReset = document.getElementById("uso-tokens-reset");
+
+    if (resetPrazo === null || !elReset) return;
+
+    const restante = (resetPrazo - Date.now()) / 1000;
+
+    if (restante <= 0) {
+        // Chegou a zero: tokens por minuto totalmente restaurados.
+        if (resetLimite) {
+            if (elTexto) {
+                elTexto.textContent =
+                    formatarNumero(resetLimite) + " / " + formatarNumero(resetLimite);
+            }
+            if (elBarra) atualizarBarra(elBarra, resetLimite, resetLimite);
+        }
+
+        elReset.textContent = "tokens restaurados";
+
+        clearInterval(timerReset);
+        timerReset = null;
+        resetPrazo = null;
+        return;
+    }
+
+    elReset.textContent = "reseta em " + formatarTempo(restante);
+}
+
+function iniciarContagemReset(segundos, limite) {
+    resetPrazo = Date.now() + segundos * 1000;
+    resetLimite = limite;
+
+    clearInterval(timerReset);
+    timerReset = setInterval(tickReset, 250); // 250ms evita "pular" segundos
+
+    tickReset();
+}
+
 function atualizarPainelUso(uso) {
     if (!uso || !painelUso) return;
 
@@ -1725,8 +2182,13 @@ function atualizarPainelUso(uso) {
         );
     }
 
-    if (elTokensReset && uso.tokens_reset) {
-        elTokensReset.textContent = "reseta em " + uso.tokens_reset;
+    const segReset = paraSegundos(uso.tokens_reset);
+
+    if (segReset !== null) {
+        const restante = Math.max(0, segReset - (uso.idade_s || 0));
+        iniciarContagemReset(restante, uso.tokens_limite);
+    } else if (elTokensReset) {
+        elTokensReset.textContent = "";
     }
 
     if (elPedidosTexto) {
@@ -1765,6 +2227,297 @@ if (botaoUso) {
 
 if (overlayUso) {
     overlayUso.addEventListener("click", fecharPainelUsoNoCelular);
+}
+
+
+// ========================================
+// LEITURA EM VOZ ALTA
+// ========================================
+
+let textoFalando = null;   // texto que está sendo lido agora
+let leituraId = 0;         // invalida callbacks de leituras antigas
+
+// Tira o que não faz sentido ser falado (código, Markdown, links e emojis).
+function limparParaFala(texto) {
+    return String(texto || "")
+        .replace(/```[\s\S]*?```/g, " trecho de código. ")
+        .replace(/`([^`]*)`/g, "$1")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .replace(/https?:\/\/\S+/g, "link")
+        .replace(/[*#>~]+/g, "")
+        .replace(/\p{Extended_Pictographic}/gu, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+// O Chrome pode interromper falas longas, então dividimos o texto em partes.
+function dividirParaFala(texto, maximo = 180) {
+    const frases = texto.split(/(?<=[.!?:;])\s+/);
+    const partes = [];
+    let atual = "";
+
+    for (const frase of frases) {
+        if (atual && (atual + " " + frase).length > maximo) {
+            partes.push(atual);
+            atual = frase;
+        } else {
+            atual = atual ? atual + " " + frase : frase;
+        }
+    }
+
+    if (atual) {
+        partes.push(atual);
+    }
+
+    return partes;
+}
+
+function escolherVoz() {
+    const vozes = speechSynthesis.getVoices();
+
+    return (
+        vozes.find(v => v.lang === "pt-BR") ||
+        vozes.find(v => v.lang && v.lang.toLowerCase().startsWith("pt")) ||
+        null
+    );
+}
+
+function atualizarBotoesOuvir() {
+    document.querySelectorAll(".botao-ouvir").forEach(b => {
+        const falandoEste =
+            textoFalando !== null && b._texto === textoFalando;
+
+        b.classList.toggle("falando", falandoEste);
+
+        const descricao = falandoEste
+            ? "Parar leitura"
+            : "Ouvir resposta";
+
+        b.title = descricao;
+        b.setAttribute("aria-label", descricao);
+    });
+}
+
+function pararLeitura() {
+    leituraId++;
+    textoFalando = null;
+
+    if ("speechSynthesis" in window) {
+        speechSynthesis.cancel();
+    }
+
+    atualizarBotoesOuvir();
+}
+
+function falar(texto) {
+    if (!("speechSynthesis" in window)) {
+        mostrarAviso("Este navegador não suporta leitura em voz alta.");
+        return;
+    }
+
+    pararLeitura();
+
+    const limpo = limparParaFala(texto);
+
+    if (!limpo) {
+        return;
+    }
+
+    const meuId = ++leituraId;
+    const voz = escolherVoz();
+    const partes = dividirParaFala(limpo);
+
+    textoFalando = String(texto ?? "");
+
+    partes.forEach((parte, i) => {
+        const fala = new SpeechSynthesisUtterance(parte);
+
+        fala.lang = "pt-BR";
+        fala.rate = 1;
+
+        if (voz) {
+            fala.voice = voz;
+        }
+
+        if (i === partes.length - 1) {
+            const terminou = () => {
+                if (leituraId === meuId) {
+                    textoFalando = null;
+                    atualizarBotoesOuvir();
+                }
+            };
+
+            fala.onend = terminou;
+            fala.onerror = terminou;
+        }
+
+        speechSynthesis.speak(fala);
+    });
+
+    atualizarBotoesOuvir();
+}
+
+// Algumas vezes a lista de vozes só carrega depois.
+if ("speechSynthesis" in window) {
+    speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+}
+
+
+// ========================================
+// MICROFONE (VOZ PARA TEXTO)
+// ========================================
+
+const ReconhecimentoVoz =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+let reconhecimento = null;
+let gravando = false;
+let vozPendente = false;      // a próxima mensagem enviada veio do microfone
+let erroDeVoz = false;
+
+function mensagemErroVoz(codigo) {
+    switch (codigo) {
+        case "not-allowed":
+        case "service-not-allowed":
+            return "O acesso ao microfone foi negado. Libere o microfone para este site nas configurações do navegador.";
+
+        case "no-speech":
+            return "Não ouvi nada. Tente falar de novo.";
+
+        case "audio-capture":
+            return "Nenhum microfone foi encontrado.";
+
+        case "network":
+            return "O reconhecimento de voz precisa de internet.";
+
+        default:
+            return "Não foi possível usar o microfone.";
+    }
+}
+
+function atualizarBotaoMic() {
+    if (!botaoMic) {
+        return;
+    }
+
+    botaoMic.classList.toggle("gravando", gravando);
+
+    const descricao = gravando
+        ? "Parar e enviar"
+        : "Falar com a PYXIE";
+
+    botaoMic.title = descricao;
+    botaoMic.setAttribute("aria-label", descricao);
+}
+
+function iniciarMicrofone() {
+    if (!ReconhecimentoVoz) {
+        mostrarAviso("Este navegador não suporta reconhecimento de voz.");
+        return;
+    }
+
+    // Evita que a PYXIE "se ouça" falando.
+    pararLeitura();
+
+    erroDeVoz = false;
+
+    const rec = new ReconhecimentoVoz();
+
+    rec.lang = "pt-BR";
+    rec.interimResults = true;   // mostra o texto enquanto você fala
+    rec.continuous = false;      // para sozinho quando você faz uma pausa
+    rec.maxAlternatives = 1;
+
+    let textoFinal = "";
+
+    rec.onstart = () => {
+        gravando = true;
+        input.value = "";
+        input.placeholder = "Ouvindo...";
+        atualizarBotaoMic();
+    };
+
+    rec.onresult = (event) => {
+        let parcial = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const trecho = event.results[i][0].transcript;
+
+            if (event.results[i].isFinal) {
+                textoFinal += trecho;
+            } else {
+                parcial += trecho;
+            }
+        }
+
+        input.value = (textoFinal + parcial).trim();
+    };
+
+    rec.onerror = (event) => {
+        // "aborted" acontece quando paramos de propósito.
+        if (event.error === "aborted") {
+            return;
+        }
+
+        erroDeVoz = true;
+        mostrarAviso(mensagemErroVoz(event.error));
+    };
+
+    rec.onend = () => {
+        gravando = false;
+        reconhecimento = null;
+
+        input.placeholder = imagemPendente
+            ? PLACEHOLDER_COM_IMAGEM
+            : PLACEHOLDER_PADRAO;
+
+        atualizarBotaoMic();
+
+        const falado = (textoFinal || input.value).trim();
+
+        if (!erroDeVoz && falado) {
+            input.value = falado;
+            vozPendente = true;
+            enviarMensagem();
+        }
+    };
+
+    reconhecimento = rec;
+
+    try {
+        rec.start();
+    } catch (erro) {
+        console.error("Erro ao iniciar o microfone:", erro);
+
+        reconhecimento = null;
+        gravando = false;
+
+        atualizarBotaoMic();
+
+        input.placeholder = imagemPendente
+            ? PLACEHOLDER_COM_IMAGEM
+            : PLACEHOLDER_PADRAO;
+
+        mostrarAviso("Não foi possível iniciar o microfone.");
+    }
+}
+
+function alternarMicrofone() {
+    if (gravando && reconhecimento) {
+        reconhecimento.stop();   // finaliza e envia o que foi dito
+        return;
+    }
+
+    iniciarMicrofone();
+}
+
+if (botaoMic) {
+    if (!ReconhecimentoVoz) {
+        // Firefox, por exemplo, não suporta reconhecimento de voz em todas as versões.
+        botaoMic.hidden = true;
+    } else {
+        botaoMic.addEventListener("click", alternarMicrofone);
+    }
 }
 
 

@@ -83,18 +83,48 @@ def _checar_identidade(msg: str):
     return 0.0
 
 
+
 def _checar_calculo(msg: str):
+    """
+    Identifica pedidos de cálculo pela intenção da mensagem,
+    evitando classificar código-fonte inteiro como uma conta.
+    """
     msg_norm = normalizar(msg)
+
+    # Mensagens com blocos de código ou aparência de código
+    # não devem ser classificadas automaticamente como cálculo.
+    indicadores_codigo = (
+        "```",
+        "def ",
+        "class ",
+        "function ",
+        "const ",
+        "let ",
+        "var ",
+        "import ",
+        "from ",
+        "console.log",
+        "document.",
+        "=>",
+    )
+
+    if any(indicador in msg.lower() for indicador in indicadores_codigo):
+        return 0.0
+
+    # Intenções explícitas de cálculo no início da mensagem.
     padroes = [
-        r"calcul[ae]",
-        r"quanto e \d",
-        r"resultado de",
-        r"\d+\s*[\+\-\*\/]\s*\d+",
+        r"^(calcule|calcular|calcula)\b",
+        r"^quanto e \d",
+        r"^qual e o resultado de\b",
+        r"^resolva a conta\b",
     ]
-    for p in padroes:
-        if re.search(p, msg_norm):
+
+    for padrao in padroes:
+        if re.search(padrao, msg_norm):
             return 1.0
+
     return 0.0
+
 
 
 def _checar_memoria(msg: str):
