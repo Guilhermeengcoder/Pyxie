@@ -692,7 +692,7 @@ body.sidebar-fechada .sidebar {
 
 .input-box {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px;
 
     padding: 6px;
@@ -709,26 +709,27 @@ body.sidebar-fechada .sidebar {
     border-color: var(--acento);
 }
 
-.input-box input {
+.input-box textarea {
     flex: 1;
     min-width: 0;
 
-    padding: 10px 6px;
+    padding: 8px 6px;
+    max-height: 200px;
 
     border: none;
     outline: none;
+    resize: none;
+    overflow-y: auto;
 
     background: transparent;
-
     color: var(--texto);
 
     font-family: inherit;
-
-    /* 16px evita o zoom automático no iPhone */
     font-size: 16px;
+    line-height: 24px;
 }
 
-.input-box input::placeholder {
+.input-box textarea::placeholder {
     color: #777777;
 }
 
@@ -1416,4 +1417,9 @@ hr {
     border: 0;
     border-top: 1px solid var(--borda, #333333);
     margin: 16px 0;
+}
+
+.user-message > div:not(.anexo) {
+    max-height: 360px;
+    overflow-y: auto;
 }

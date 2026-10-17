@@ -7,7 +7,6 @@ import re
 import random
 import unicodedata
 import json
-from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -36,48 +35,13 @@ from futuro.LTM import (
 
 
 # =============================================================
-# ACESSO À MEMÓRIA FIXA EM JSON
-# =============================================================
-
-# Localiza memory.json na raiz do projeto PYXIE.
-# Exemplo: PYXIE/memory.json
-ARQUIVO_MEMORIA_FIXA = Path(__file__).resolve().parent.parent / "memory.json"
-
-
-def carregar_memoria_fixa():
-    """
-    Carrega as informações fixas armazenadas no memory.json.
-
-    Retorna um dicionário com as informações do arquivo.
-    Caso o arquivo não exista ou contenha JSON inválido,
-    retorna um dicionário vazio sem interromper a PYXIE.
-    """
-    try:
-        with ARQUIVO_MEMORIA_FIXA.open("r", encoding="utf-8") as arquivo:
-            dados = json.load(arquivo)
-
-        if not isinstance(dados, dict):
-            print("[ERRO] O memory.json precisa conter um objeto JSON.")
-            return {}
-
-        return dados
-
-    except FileNotFoundError:
-        print(f"[AVISO] Arquivo de memória fixa não encontrado: {ARQUIVO_MEMORIA_FIXA}")
-        return {}
-
-    except json.JSONDecodeError as erro:
-        print(f"[ERRO] JSON inválido no memory.json: {erro}")
-        return {}
-
-    except OSError as erro:
-        print(f"[ERRO] Não foi possível ler o memory.json: {erro}")
-        return {}
-
-
-# =============================================================
 # FUNÇÕES AUXILIARES
 # =============================================================
+
+# Acima disso (ou com várias linhas) a mensagem é tratada como
+# "conteúdo extenso": código, prompt ou texto para trabalhar.
+LIMITE_CHARS_EXTENSO = 600
+LIMITE_LINHAS_EXTENSO = 4
 
 
 def normalizar(texto):
@@ -93,9 +57,18 @@ def normalizar(texto):
 
 
 def parece_codigo_ou_prompt_extenso(texto: str) -> bool:
-    """Evita dividir ou normalizar código e mensagens longas antes da IA."""
+    """
+    Detecta código, prompts e textos longos que devem chegar INTEIROS
+    ao modelo, sem atalhos, sem divisão em tarefas e sem correção.
+    """
     texto = str(texto or "")
-    if len(texto) >= 1200 or "```" in texto or "~~~" in texto:
+
+    if (
+        len(texto) >= LIMITE_CHARS_EXTENSO
+        or texto.count("\n") >= LIMITE_LINHAS_EXTENSO
+        or "```" in texto
+        or "~~~" in texto
+    ):
         return True
 
     padroes_codigo = (
@@ -112,10 +85,12 @@ def parece_codigo_ou_prompt_extenso(texto: str) -> bool:
 def pedido_expresso_desfazer(texto: str) -> bool:
     """Só considera desfazer quando a mensagem realmente pede essa ação."""
     normalizado = normalizar(texto)
-    return bool(re.match(
-        r"^(?:pyxie\s+)?(?:desfaca|desfazer|desfaz|reverta|volte|cancele)\b.*\b(?:alteracao|mudanca|edicao|memoria|json|ultima)\b",
-        normalizado,
-    ))
+    return bool(
+        re.match(
+            r"^(?:pyxie\s+)?(?:desfaca|desfazer|desfaz|reverta|volte|cancele)\b.*\b(?:alteracao|mudanca|edicao|memoria|json|ultima)\b",
+            normalizado,
+        )
+    )
 
 
 def limpar_pergunta(pergunta):
@@ -218,13 +193,19 @@ def calcular_seguro(expression: str):
 LIMITE_MEMORIA_FIXA = 8000
 
 
-def memoria_fixa_relevante(dados: dict, mensagem: str = "", limite: int = LIMITE_MEMORIA_FIXA) -> str:
-    base = {k: v for k, v in dados.items() if k not in ("schema_version", "description")}
+def memoria_fixa_relevante(
+    dados: dict, mensagem: str = "", limite: int = LIMITE_MEMORIA_FIXA
+) -> str:
+    base = {
+        k: v for k, v in dados.items() if k not in ("schema_version", "description")
+    }
 
     partes, total, omitidas = [], 0, []
 
     for chave, valor in base.items():
-        bloco = f'"{chave}":' + json.dumps(valor, ensure_ascii=False, separators=(",", ":"))
+        bloco = f'"{chave}":' + json.dumps(
+            valor, ensure_ascii=False, separators=(",", ":")
+        )
 
         if total + len(bloco) > limite:
             omitidas.append(chave)
@@ -234,7 +215,9 @@ def memoria_fixa_relevante(dados: dict, mensagem: str = "", limite: int = LIMITE
         total += len(bloco) + 1
 
     if omitidas:
-        print(f"[memory.json] acima de {limite} caracteres; seções omitidas: {omitidas}")
+        print(
+            f"[memory.json] acima de {limite} caracteres; seções omitidas: {omitidas}"
+        )
 
     return "{" + ",".join(partes) + "}" if partes else ""
 
@@ -253,10 +236,12 @@ class Brain:
         # Cada chat tem sua própria STM + Context (ver core/chat_session.py)
         self.sessions = SessionManager()
 
-        # Memória fixa (memory.json) — global, vale para todos os chats
-        self.memoria_fixa = carregar_memoria_fixa()
-
         limpar_expirados()
+
+    @property
+    def memoria_fixa(self):
+        """Memória fixa sempre atualizada (Redis compartilhado ou arquivo local)."""
+        return memory_json.carregar()
 
     def register_module(self, name, module):
         self.modules[name] = module
@@ -284,18 +269,15 @@ class Brain:
     # ----------------------------------------------------------
 
     def _editar_memoria_fixa(self, message):
-        norm = normalizar(message)
-
         if pedido_expresso_desfazer(message):
             if memory_json.desfazer():
-                self.memoria_fixa = memory_json.carregar()
                 return "Pronto, desfiz a última alteração na memória fixa."
             return "Não há nenhuma alteração para desfazer."
 
         try:
             dados = memory_json.carregar_estrito()
         except ValueError as e:
-            return f"Não consegui ler o memory.json ({e}). Não alterei nada."
+            return f"Não consegui ler a memória fixa ({e}). Não alterei nada."
 
         # O contexto não vazio evita que o prompt peça um cumprimento
         try:
@@ -317,13 +299,12 @@ class Brain:
             )
 
         try:
-            descricao = memory_json.aplicar_operacao(op)
+            memory_json.aplicar_operacao(op)
         except ValueError as e:
-            return f"Não alterei o JSON: {e}"
+            return f"Não consegui alterar minha memória: {e}."
 
-        self.memoria_fixa = memory_json.carregar()  # já vale na próxima mensagem
-        return f"Memória fixa atualizada: {descricao}."
-
+        return memory_json.confirmacao_natural(op)
+    
     # ----------------------------------------------------------
     # ENTRY POINT — lida com múltiplas tarefas
     # ----------------------------------------------------------
@@ -386,6 +367,82 @@ class Brain:
         return resposta_final
 
     # ----------------------------------------------------------
+    # RESPOSTA PELO LLM (fallback e conteúdo extenso)
+    # ----------------------------------------------------------
+
+    def _responder_com_llm(
+        self,
+        sessao: ChatSession,
+        mensagem_original: str,
+        mensagem_para_ia: str,
+        original_message: str,
+        extenso: bool = False,
+    ):
+        contexto_stm = sessao.stm.get_context_seletivo()
+
+        # Em conteúdo extenso não vale a pena buscar "memórias por palavra":
+        # as palavras vêm do código e só trazem ruído.
+        contexto_memoria_db = (
+            "" if extenso else gerar_contexto_para_prompt(original_message)
+        )
+        contexto_extra = sessao.context.get_entity() or ""
+
+        contexto_historico = ""
+        for m in contexto_stm:
+            if m["role"] == "system":
+                contexto_historico += m["content"] + "\n\n"
+            elif m["role"] == "user":
+                contexto_historico += f"Usuário: {m['content']}\n"
+            elif m["role"] == "assistant":
+                contexto_historico += f"PYXIE: {m['content']}\n"
+
+        # Memória fixa (Redis ou memory.json) em texto para a IA.
+        contexto_memoria_fixa = memoria_fixa_relevante(
+            self.memoria_fixa, original_message
+        )
+
+        contexto_final = (
+            (
+                "INFORMAÇÕES FIXAS DA PYXIE (memory.json):\n"
+                + contexto_memoria_fixa
+                + "\n\n"
+                if contexto_memoria_fixa
+                else ""
+            )
+            + contexto_memoria_db[:400]
+            + "\n\n"
+            + contexto_historico
+            + "\n\n"
+            + contexto_extra[:100]
+        ).strip()
+
+        try:
+            response = perguntar_llm(mensagem_para_ia, contexto_final)
+        except Exception as erro:
+            print(f"[ERRO LLM no fallback]: {erro}")
+            response = None
+
+        if isinstance(response, str) and response.strip():
+            resposta_final = self.personality.aplicar(response)
+
+            # Código e prompts nunca viram "fatos" do usuário.
+            if not extenso:
+                extrair_e_salvar(mensagem_original, topico=sessao.context.get_topic())
+
+            sessao.regeneracao_pergunta = mensagem_para_ia
+            sessao.regeneracao_contexto = contexto_final
+            self._finalizar(sessao, mensagem_original, resposta_final)
+            return resposta_final
+
+        resposta_final = self.personality.aplicar(
+            "Não consegui processar esse conteúdo agora."
+            if extenso
+            else "Ainda não encontrei uma resposta para isso."
+        )
+        self._finalizar(sessao, mensagem_original, resposta_final)
+        return resposta_final
+
+    # ----------------------------------------------------------
     # PROCESSAMENTO DE UMA ÚNICA TAREFA
     # ----------------------------------------------------------
 
@@ -401,7 +458,7 @@ class Brain:
         # "pyxie" quando ela é a mensagem inteira nem altera o código recebido.
         prefixo = re.match(r"^\s*pyxie\s*[, :]\s*", mensagem_para_ia, re.IGNORECASE)
         if prefixo:
-            mensagem_para_ia = mensagem_para_ia[prefixo.end():]
+            mensagem_para_ia = mensagem_para_ia[prefixo.end() :]
 
         original_message = normalizar(mensagem_para_ia)
         conteudo_extenso = parece_codigo_ou_prompt_extenso(mensagem_para_ia)
@@ -418,13 +475,28 @@ class Brain:
         sessao.context.add_message(mensagem_original)
 
         # ------------------------------------------------------
+        # CONTEÚDO EXTENSO (código, prompts, textos longos)
+        # Vai direto ao LLM: sem atalhos, sem respostas fixas,
+        # sem extração de fatos e sem comandos de memória.
+        # ------------------------------------------------------
+        if conteudo_extenso:
+            return self._responder_com_llm(
+                sessao,
+                mensagem_original,
+                mensagem_para_ia,
+                original_message,
+                extenso=True,
+            )
+
+        # ------------------------------------------------------
         # EDIÇÃO DA MEMÓRIA FIXA (memory.json)
         # ------------------------------------------------------
-        if (
-            memory_json.eh_pedido_de_edicao(original_message)
-            or pedido_expresso_desfazer(mensagem_original)
-        ):
-            resposta_final = self.personality.aplicar(self._editar_memoria_fixa(message))
+        if memory_json.eh_pedido_de_edicao(
+            original_message
+        ) or pedido_expresso_desfazer(mensagem_original):
+            resposta_final = self.personality.aplicar(
+                self._editar_memoria_fixa(message)
+            )
             self._finalizar(sessao, message, resposta_final)
             return resposta_final
 
@@ -532,7 +604,7 @@ class Brain:
         # DECISÃO CENTRAL
         # --------------------------------------------------
 
-        decisao = decidir(original_message, sessao.context) if not conteudo_extenso else {"destino": None}
+        decisao = decidir(original_message, sessao.context)
         categoria = decisao.get("destino")
         modulo = categoria
 
@@ -543,7 +615,7 @@ class Brain:
                 if getattr(m, "category", None) == categoria:
                     modulos_candidatos.append(m)
 
-        if not modulos_candidatos and not conteudo_extenso:
+        if not modulos_candidatos:
             modulos_candidatos = list(self.modules.values())
 
         for modulo_instancia in modulos_candidatos:
@@ -677,7 +749,7 @@ class Brain:
         # CONHECIMENTO LOCAL
         # --------------------------------------------------
 
-        response = None if conteudo_extenso else buscar_conhecimento(processed_message)
+        response = buscar_conhecimento(processed_message)
         if response:
             resposta_final = self.personality.aplicar(response)
             self._finalizar(sessao, message, resposta_final)
@@ -686,62 +758,13 @@ class Brain:
         # --------------------------------------------------
         # FALLBACK FINAL — IA com contexto seletivo
         # --------------------------------------------------
-        contexto_stm = sessao.stm.get_context_seletivo(max_chars=6000)
-        contexto_memoria_db = gerar_contexto_para_prompt(original_message)
-        contexto_extra = sessao.context.get_entity() or ""
-
-        contexto_historico = ""
-        for m in contexto_stm:
-            if m["role"] == "system":
-                contexto_historico += m["content"] + "\n\n"
-            elif m["role"] == "user":
-                contexto_historico += f"Usuário: {m['content']}\n"
-            elif m["role"] == "assistant":
-                contexto_historico += f"PYXIE: {m['content']}\n"
-
-        # ------------------------------------------------------
-        # CONVERTE A MEMÓRIA FIXA EM TEXTO PARA A IA
-        # ------------------------------------------------------
-        # Se o JSON estiver vazio ou indisponível, não adiciona
-        # conteúdo à resposta nem interrompe o processamento.
-        contexto_memoria_fixa = memoria_fixa_relevante(
-            self.memoria_fixa, original_message
+        return self._responder_com_llm(
+            sessao,
+            mensagem_original,
+            mensagem_para_ia,
+            original_message,
+            extenso=False,
         )
-
-        contexto_final = (
-            (
-                "INFORMAÇÕES FIXAS DA PYXIE (memory.json):\n"
-                + contexto_memoria_fixa
-                + "\n\n"
-                if contexto_memoria_fixa
-                else ""
-            )
-            + contexto_memoria_db[:400]
-            + "\n\n"
-            + contexto_historico
-            + "\n\n"
-            + contexto_extra[:100]
-        ).strip()
-
-        try:
-            response = perguntar_llm(mensagem_para_ia, contexto_final)
-        except Exception as erro:
-            print(f"[ERRO LLM no fallback]: {erro}")
-            response = None
-
-        if isinstance(response, str) and response.strip():
-            resposta_final = self.personality.aplicar(response)
-            extrair_e_salvar(mensagem_original, topico=sessao.context.get_topic())
-            sessao.regeneracao_pergunta = mensagem_para_ia
-            sessao.regeneracao_contexto = contexto_final
-            self._finalizar(sessao, mensagem_original, resposta_final)
-            return resposta_final
-
-        resposta_final = self.personality.aplicar(
-            "Ainda não encontrei uma resposta para isso."
-        )
-        self._finalizar(sessao, mensagem_original, resposta_final)
-        return resposta_final
 
     # ----------------------------------------------------------
     # FINALIZAÇÃO — STM

@@ -27,7 +27,7 @@ PASTA_STM = os.getenv("PYXIE_STM_DIR", "data/stm")
 
 # Teto de caracteres do histórico enviado ao LLM (o arquivo guarda tudo).
 # Use None para enviar tudo.
-LIMITE_CONTEXTO_CHARS = 6000
+LIMITE_CONTEXTO_CHARS = 20000
 
 
 def _caminho_stm(chat_id):

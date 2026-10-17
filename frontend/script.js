@@ -1899,6 +1899,7 @@ function definirCarregando(carregando) {
 
 async function enviarMensagem() {
     const texto = input.value.trim();
+    ajustarAlturaInput();
     const imagem = imagemPendente;
 
     // Não envia mensagem vazia nem enquanto espera resposta.
@@ -1934,8 +1935,9 @@ async function enviarMensagem() {
     registrarMensagem(conversa, "usuario", texto, miniatura);
     desenharMensagem(texto, "usuario", miniatura);
 
-    // Limpa campo e anexo
+   // Limpa campo e anexo
     input.value = "";
+    ajustarAlturaInput();
     removerImagemPendente();
 
     // Desativa controles enquanto processa
@@ -2520,6 +2522,12 @@ if (botaoMic) {
     }
 }
 
+function ajustarAlturaInput() {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 200) + "px";
+}
+
+input.addEventListener("input", ajustarAlturaInput);
 
 // ========================================
 // EVENTOS
