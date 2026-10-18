@@ -106,7 +106,18 @@ _INICIO_IMPERATIVO = re.compile(
 )
 
 
+# "se lembre que ...", "lembre que ...", "memorize que ...", "esqueça que ..."
+_COMANDO_QUE = re.compile(
+    r"^(?:(?:ok|entao|agora|por favor|pyxie)\s+)*"
+    r"(?:se\s+lembre|lembre|memorize|guarde|anote|se\s+esqueca|esqueca|recorde)\s+que\b"
+)
+
+
 def eh_pedido_de_edicao(msg_norm: str) -> bool:
+    # "se lembre que X", "esqueça que X": comando direto sobre a memória.
+    if _COMANDO_QUE.match(msg_norm.strip()):
+        return True
+
     # Citou o JSON ou a memória fixa: basta ter um verbo de escrita.
     if _LOCAIS.search(msg_norm) and _VERBOS.search(msg_norm):
         return True

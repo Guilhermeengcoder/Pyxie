@@ -45,6 +45,17 @@ class Module:
             "display": "VS Code",
         },
     }
+    
+    # Windows: nome que o próprio sistema sabe abrir (App Paths / protocolo).
+    # Não depende de onde o programa foi instalado.
+    WINDOWS_ALVOS = {
+        "chrome": "chrome",
+        "edge": "msedge",
+        "spotify": "spotify:",
+        "notepad": "notepad",
+        "calculadora": "calc",
+        "vscode": "code",
+    }
 
     ALIASES = {
         "chrome": "chrome",
@@ -90,6 +101,14 @@ class Module:
                     if caminho and os.path.exists(caminho):
                         subprocess.Popen([caminho])
                         return f"Abrindo {display}!"
+
+                alvo = self.WINDOWS_ALVOS.get(programa)
+                if alvo:
+                    try:
+                        os.startfile(alvo)
+                        return f"Abrindo {display}!"
+                    except OSError:
+                        pass
                 return f"Não encontrei o {display}. Verifique se está instalado."
             elif sys.platform == "darwin":
                 os.system(info["darwin"])

@@ -45,7 +45,78 @@ let chatId = gerarChatId(); // reload da página = chat novo
 
 const CHAVE_STORAGE = "pyxie_conversas_v1";
 
-const SAUDACAO = "Olá! Como posso ajudar?";
+const CHAVE_SAUDACAO_DIA = "pyxie_saudacao_dia";
+
+function obterDataLocal() {
+    const agora = new Date();
+    const ano = agora.getFullYear();
+    const mes = String(agora.getMonth() + 1).padStart(2, "0");
+    const dia = String(agora.getDate()).padStart(2, "0");
+
+    return `${ano}-${mes}-${dia}`;
+}
+
+
+
+
+function prepararTelaInicial(conversa) {
+    if (!conversa || conversa.mensagens.length > 0) {
+        return;
+    }
+
+    if (!conversa.fraseTelaInicial || !conversa.tituloTelaInicial) {
+        const saudacao = obterSaudacao();
+
+        conversa.tituloTelaInicial = saudacao.titulo;
+        conversa.fraseTelaInicial = saudacao.frase;
+    }
+
+    if (!conversa.diaTelaInicial) {
+        conversa.diaTelaInicial = obterDataLocal();
+    }
+}
+
+
+
+function obterSaudacao() {
+    const hora = new Date().getHours();
+
+    let saudacao;
+
+    if (hora >= 5 && hora < 12) {
+        saudacao = "Bom dia, Guilherme!";
+    } else if (hora >= 12 && hora < 18) {
+        saudacao = "Boa tarde, Guilherme!";
+    } else {
+        saudacao = "Boa noite, Guilherme!";
+    }
+
+    const frases = [
+        "O que vamos criar hoje?",
+        "Qual ideia vamos tirar do papel?",
+        "Vamos aprender algo novo?",
+        "Em que posso facilitar seu dia?",
+        "Tem algum desafio para resolvermos?",
+        "Que tal transformar uma ideia em realidade?",
+        "Por onde começamos hoje?",
+        "Estou pronta para mais um projeto. E você?",
+        "O que está passando pela sua cabeça?",
+        "Vamos construir algo incrível?",
+        "Qual é a missão de hoje?",
+        "Me conta o que você está planejando.",
+        "Bora resolver aquele problema?",
+        "Que tal explorar uma ideia diferente?",
+        "Seu próximo projeto começa por onde?"
+    ];
+
+    const indice = Math.floor(Math.random() * frases.length);
+    const frase = frases[indice];
+
+    return {
+        titulo: saudacao,
+        frase: frase
+    };
+}
 
 // Quantas mensagens anteriores vão junto a cada pedido.
 const MENSAGENS_DE_CONTEXTO = 6;
@@ -146,19 +217,28 @@ function novaConversa() {
 
     if (vazia) {
         vazia.atualizadaEm = Date.now();
+
+        prepararTelaInicial(vazia);
+
+        salvarEstado();
         abrirConversa(vazia.id);
         return;
     }
 
     const agora = Date.now();
 
-    estado.conversas.unshift({
+    const conversa = {
         id: criarId(),
         titulo: "Nova conversa",
         criadaEm: agora,
         atualizadaEm: agora,
-        mensagens: []
-    });
+        mensagens: [],
+        diaTelaInicial: null
+    };
+
+    prepararTelaInicial(conversa);
+
+    estado.conversas.unshift(conversa);
 
     ordenarConversas();
 
@@ -1057,16 +1137,88 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
     rolarParaOFim();
 }
 
+
+
+
 function renderizarMensagens() {
     chat.innerHTML = "";
-
-    // A saudação aparece no topo de toda conversa, mas não é salva nem enviada.
-    desenharMensagem(SAUDACAO, "pyxie");
 
     const conversa = conversaAtiva();
 
     if (!conversa) {
         return;
+    }
+
+    // Tela inicial independente do histórico.
+    if (conversa.mensagens.length === 0) {
+        prepararTelaInicial(conversa);
+
+        const tela = document.createElement("section");
+        tela.className = "tela-inicial";
+
+        const titulo = document.createElement("h2");
+        titulo.className = "tela-inicial-titulo";
+        titulo.textContent = conversa.tituloTelaInicial || "Olá!";
+
+        const frase = document.createElement("p");
+        frase.className = "tela-inicial-frase";
+        frase.textContent =
+            conversa.fraseTelaInicial || "O que vamos criar hoje?";
+
+        const sugestoes = document.createElement("div");
+        sugestoes.className = "sugestoes-iniciais";
+
+        const opcoes = [
+            {
+                titulo: "💡 Explorar uma ideia",
+                descricao: "Vamos transformar uma ideia em um plano.",
+                mensagem: "Me ajude a desenvolver uma ideia criativa."
+            },
+            {
+                titulo: "💻 Programar comigo",
+                descricao: "Analisar código ou resolver um problema.",
+                mensagem: "Quero ajuda para programar e resolver um problema."
+            },
+            {
+                titulo: "📚 Aprender algo novo",
+                descricao: "Entender um assunto passo a passo.",
+                mensagem: "Quero aprender algo novo. Sugira um assunto interessante."
+            },
+            {
+                titulo: "✍️ Criar ou escrever",
+                descricao: "Organizar ideias e produzir um texto.",
+                mensagem: "Me ajude a criar ou escrever algo. Podemos começar pelas ideias."
+            }
+        ];
+
+        opcoes.forEach(opcao => {
+            const botao = document.createElement("button");
+            botao.type = "button";
+            botao.className = "sugestao-inicial";
+
+            const tituloOpcao = document.createElement("strong");
+            tituloOpcao.textContent = opcao.titulo;
+
+            const descricao = document.createElement("span");
+            descricao.textContent = opcao.descricao;
+
+            botao.append(tituloOpcao, descricao);
+
+            botao.addEventListener("click", () => {
+                if (pendenteId) {
+                    return;
+                }
+
+                input.value = opcao.mensagem;
+                ajustarAlturaInput();
+                enviarMensagem();
+            });
+
+            sugestoes.appendChild(botao);
+        });
+
+        tela.append(titulo, frase, sugestoes);
+        chat.appendChild(tela);
     }
 
     conversa.mensagens.forEach((m, indice) => {
@@ -1088,17 +1240,14 @@ function renderizarMensagens() {
         });
     });
 
-    // Se voltou para uma conversa que ainda espera resposta
     if (pendenteId === conversa.id) {
         criarIndicador();
     }
 
-    // Atualiza o estado visual dos botões de voz.
     if (typeof atualizarBotoesOuvir === "function") {
         atualizarBotoesOuvir();
     }
 }
-
 
 // ========================================
 // REGENERAR ÚLTIMA RESPOSTA
@@ -1897,6 +2046,54 @@ function definirCarregando(carregando) {
     }
 }
 
+
+
+
+function gerarTituloConversa(texto) {
+    let titulo = String(texto || "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!titulo) {
+        return "Conversa com imagem";
+    }
+
+    // Remove saudações e pedidos genéricos no início.
+    titulo = titulo.replace(
+        /^(?:(?:oi|olá|ola|bom dia|boa tarde|boa noite)[,!.\s]*)+/i,
+        ""
+    );
+
+    titulo = titulo.replace(
+        /^(?:me ajude a|me ajuda a|pode me ajudar a|gostaria de|quero|preciso|como posso|como faço para|como fazer para)\s+/i,
+        ""
+    );
+
+    // Se houver várias linhas ou parágrafos, prioriza o começo.
+    titulo = titulo.split(/\n/)[0].trim();
+
+    // Evita usar uma mensagem enorme como título.
+    const limite = 42;
+
+    if (titulo.length > limite) {
+        titulo = titulo.slice(0, limite).trimEnd();
+
+        // Evita terminar no meio de uma palavra.
+        const ultimoEspaco = titulo.lastIndexOf(" ");
+
+        if (ultimoEspaco > 20) {
+            titulo = titulo.slice(0, ultimoEspaco);
+        }
+
+        titulo += "...";
+    }
+
+    return titulo
+        ? titulo.charAt(0).toLocaleUpperCase("pt-BR") + titulo.slice(1)
+        : "Nova conversa";
+}
+
+
 async function enviarMensagem() {
     const texto = input.value.trim();
     ajustarAlturaInput();
@@ -1911,6 +2108,16 @@ async function enviarMensagem() {
 
     if (!conversa) {
         return;
+    }
+
+    // Define o título apenas na primeira mensagem da conversa.
+    if (
+        conversa.mensagens.length === 0 &&
+        conversa.titulo === "Nova conversa"
+    ) {
+        conversa.titulo = gerarTituloConversa(texto || "Conversa com imagem");
+        renderizarLista();
+        salvarEstado();
     }
 
     // Registra se esta mensagem foi iniciada pelo microfone.
@@ -1935,7 +2142,7 @@ async function enviarMensagem() {
     registrarMensagem(conversa, "usuario", texto, miniatura);
     desenharMensagem(texto, "usuario", miniatura);
 
-   // Limpa campo e anexo
+    // Limpa campo e anexo
     input.value = "";
     ajustarAlturaInput();
     removerImagemPendente();

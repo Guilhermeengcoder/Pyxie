@@ -74,11 +74,13 @@ button {
 
     display: flex;
     flex-direction: column;
-
     height: 100%;
     background: var(--bg);
-}
 
+    /* Preparação para o fundo estrelado */
+    position: relative;
+    isolation: isolate;
+}
 
 /* ================================
    SIDEBAR (HISTÓRICO)
@@ -284,6 +286,7 @@ body.sidebar-fechada .sidebar {
     border-bottom: 1px solid var(--borda);
 }
 
+
 .chat-titulo {
     position: absolute;
     left: 50%;
@@ -297,17 +300,35 @@ body.sidebar-fechada .sidebar {
 }
 
 .chat-titulo h1 {
+    margin: 0;
+
+    color: #f2edf5;
+
     font-size: 22px;
-    font-weight: bold;
+    font-weight: 650;
+    letter-spacing: 1.5px;
+    line-height: 1.2;
+}
+
+.versao-pyxie {
+    color: #e34b68;
+
+    font-size: 1.0em;
+    font-weight: 500;
+    letter-spacing: 0.5px;
 }
 
 .chat-titulo p {
-    margin-top: 2px;
+    margin: 3px 0 0;
 
-    color: var(--texto-suave);
+    color: #898092;
 
-    font-size: 13px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1.4px;
+    line-height: 1.4;
 }
+
 
 .btn-icone {
     flex-shrink: 0;
@@ -1422,4 +1443,143 @@ hr {
 .user-message > div:not(.anexo) {
     max-height: 360px;
     overflow-y: auto;
+}
+
+
+/* ================================
+   TELA INICIAL DA PYXIE
+================================ */
+
+.tela-inicial {
+    width: 100%;
+    max-width: 760px;
+    margin: auto;
+    padding: 32px 12px;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+
+    text-align: center;
+}
+
+.tela-inicial[hidden] {
+    display: none;
+}
+
+.tela-inicial-titulo {
+    margin-bottom: 14px;
+
+    font-size: clamp(28px, 4vw, 38px);
+    font-weight: 650;
+    letter-spacing: -1px;
+}
+
+.tela-inicial-frase {
+    max-width: 560px;
+    margin-bottom: 36px;
+
+    color: var(--texto-suave);
+    font-size: 17px;
+    line-height: 1.6;
+}
+
+.sugestoes-iniciais {
+    width: 100%;
+
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.sugestao-inicial {
+    min-height: 110px;
+    padding: 18px;
+
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 8px;
+
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+
+    background: #0b0b0b;
+    color: var(--texto);
+
+    text-align: left;
+    font: inherit;
+
+    cursor: pointer;
+
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        transform 0.2s ease;
+}
+
+.sugestao-inicial:hover {
+    background: var(--bg-hover);
+    border-color: #713333;
+    transform: translateY(-2px);
+}
+
+.sugestao-inicial strong {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.sugestao-inicial span {
+    color: var(--texto-suave);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+@media (max-width: 520px) {
+    .tela-inicial {
+        padding: 24px 4px;
+    }
+
+    .sugestoes-iniciais {
+        grid-template-columns: 1fr;
+        gap: 9px;
+    }
+
+    .sugestao-inicial {
+        min-height: 82px;
+        padding: 14px;
+    }
+
+    .tela-inicial-frase {
+        margin-bottom: 24px;
+        font-size: 15px;
+    }
+}
+
+
+/* ========================================
+   PYXIE — ENERGIA CÓSMICA
+   Etapa 1: iluminação estática
+======================================== */
+
+.chat-container {
+    background-color: #030207;
+    background-image:
+        radial-gradient(
+            ellipse at 15% 25%,
+            rgba(115, 12, 50, 0.20) 0%,
+            transparent 48%
+        ),
+        radial-gradient(
+            ellipse at 85% 40%,
+            rgba(55, 24, 110, 0.18) 0%,
+            transparent 50%
+        ),
+        radial-gradient(
+            ellipse at 55% 100%,
+            rgba(18, 45, 95, 0.16) 0%,
+            transparent 52%
+        );
 }

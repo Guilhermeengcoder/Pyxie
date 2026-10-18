@@ -22,16 +22,7 @@ from core.chat_session import SessionManager, ChatSession
 from core import memory_json
 
 from core.llm import perguntar_llm, perguntar_llm_imagem
-
-
-from futuro.LTM import (
-    extrair_e_salvar,
-    gerar_contexto_para_prompt,
-    salvar_permanente,
-    apagar_memoria,
-    detectar_comando_memoria,
-    limpar_expirados,
-)
+from core.llm_erros import ErroLLM, mensagem_de_erro_llm
 
 
 # =============================================================
@@ -190,6 +181,19 @@ def calcular_seguro(expression: str):
     return eval(compile(tree, "<string>", "eval"))
 
 
+def perguntar_llm_seguro(pergunta, contexto):
+    """Como perguntar_llm, mas devolve None em vez de levantar ErroLLM.
+
+    Usada nas respostas que têm uma alternativa fixa (saudações), para uma
+    cota esgotada não virar erro 500 na API.
+    """
+    try:
+        return perguntar_llm(pergunta, contexto)
+    except ErroLLM as erro:
+        print(f"[LLM] {erro}")
+        return None
+
+
 LIMITE_MEMORIA_FIXA = 8000
 
 
@@ -235,8 +239,6 @@ class Brain:
 
         # Cada chat tem sua própria STM + Context (ver core/chat_session.py)
         self.sessions = SessionManager()
-
-        limpar_expirados()
 
     @property
     def memoria_fixa(self):
@@ -304,7 +306,7 @@ class Brain:
             return f"Não consegui alterar minha memória: {e}."
 
         return memory_json.confirmacao_natural(op)
-    
+
     # ----------------------------------------------------------
     # ENTRY POINT — lida com múltiplas tarefas
     # ----------------------------------------------------------
@@ -379,12 +381,6 @@ class Brain:
         extenso: bool = False,
     ):
         contexto_stm = sessao.stm.get_context_seletivo()
-
-        # Em conteúdo extenso não vale a pena buscar "memórias por palavra":
-        # as palavras vêm do código e só trazem ruído.
-        contexto_memoria_db = (
-            "" if extenso else gerar_contexto_para_prompt(original_message)
-        )
         contexto_extra = sessao.context.get_entity() or ""
 
         contexto_historico = ""
@@ -409,25 +405,21 @@ class Brain:
                 if contexto_memoria_fixa
                 else ""
             )
-            + contexto_memoria_db[:400]
-            + "\n\n"
             + contexto_historico
             + "\n\n"
             + contexto_extra[:100]
         ).strip()
 
+        erro_llm = None
         try:
             response = perguntar_llm(mensagem_para_ia, contexto_final)
         except Exception as erro:
             print(f"[ERRO LLM no fallback]: {erro}")
             response = None
+            erro_llm = erro
 
         if isinstance(response, str) and response.strip():
             resposta_final = self.personality.aplicar(response)
-
-            # Código e prompts nunca viram "fatos" do usuário.
-            if not extenso:
-                extrair_e_salvar(mensagem_original, topico=sessao.context.get_topic())
 
             sessao.regeneracao_pergunta = mensagem_para_ia
             sessao.regeneracao_contexto = contexto_final
@@ -435,9 +427,13 @@ class Brain:
             return resposta_final
 
         resposta_final = self.personality.aplicar(
-            "Não consegui processar esse conteúdo agora."
-            if extenso
-            else "Ainda não encontrei uma resposta para isso."
+            mensagem_de_erro_llm(erro_llm)
+            if erro_llm
+            else (
+                "Não consegui processar esse conteúdo agora."
+                if extenso
+                else "Ainda não encontrei uma resposta para isso."
+            )
         )
         self._finalizar(sessao, mensagem_original, resposta_final)
         return resposta_final
@@ -476,8 +472,8 @@ class Brain:
 
         # ------------------------------------------------------
         # CONTEÚDO EXTENSO (código, prompts, textos longos)
-        # Vai direto ao LLM: sem atalhos, sem respostas fixas,
-        # sem extração de fatos e sem comandos de memória.
+        # Vai direto ao LLM: sem atalhos, sem respostas fixas
+        # e sem comandos de memória.
         # ------------------------------------------------------
         if conteudo_extenso:
             return self._responder_com_llm(
@@ -490,6 +486,7 @@ class Brain:
 
         # ------------------------------------------------------
         # EDIÇÃO DA MEMÓRIA FIXA (memory.json)
+        # Inclui "se lembre que ..." e "esqueça que ..."
         # ------------------------------------------------------
         if memory_json.eh_pedido_de_edicao(
             original_message
@@ -499,31 +496,6 @@ class Brain:
             )
             self._finalizar(sessao, message, resposta_final)
             return resposta_final
-
-        # ------------------------------------------------------
-        # COMANDO DE MEMÓRIA EXPLÍCITA ("se lembre que X")
-        # ------------------------------------------------------
-        comando_mem = detectar_comando_memoria(message)
-        if comando_mem:
-            acao, conteudo = comando_mem
-            if acao == "salvar":
-                salvar_permanente(conteudo)
-                resposta_final = self.personality.aplicar("Anotado. Vou lembrar disso.")
-                self._finalizar(sessao, message, resposta_final)
-                return resposta_final
-            elif acao == "apagar":
-                apagou = apagar_memoria(conteudo)
-                msg = (
-                    "Memória apagada." if apagou else "Não encontrei nada para apagar."
-                )
-                resposta_final = self.personality.aplicar(msg)
-                self._finalizar(sessao, message, resposta_final)
-                return resposta_final
-
-        # ------------------------------------------------------
-        # EXTRAÇÃO AUTOMÁTICA DE FATOS DO USUÁRIO
-        # ------------------------------------------------------
-        extrair_e_salvar(message)
 
         entity = sessao.context.get_entity() or sessao.context.get_topic()
 
@@ -552,7 +524,7 @@ class Brain:
                 contexto = (
                     f"(Contexto: é de manhã, hoje é {agora.strftime('%d/%m/%Y')}.)"
                 )
-                resposta_ia = perguntar_llm(f"{message} {contexto}", "")
+                resposta_ia = perguntar_llm_seguro(f"{message} {contexto}", "")
                 resposta = (
                     resposta_ia
                     or f"Bom dia, {nome}. Hoje é {agora.strftime('%d/%m/%Y')}."
@@ -569,7 +541,7 @@ class Brain:
             pergunta = extrair_pergunta(message)
 
             if pergunta:
-                resposta_ia = perguntar_llm(message, "")
+                resposta_ia = perguntar_llm_seguro(message, "")
                 resposta = resposta_ia or f"Boa tarde, {nome}."
             else:
                 resposta = f"Boa tarde, {nome}."
@@ -583,7 +555,7 @@ class Brain:
             pergunta = extrair_pergunta(message)
 
             if pergunta:
-                resposta_ia = perguntar_llm(message, "")
+                resposta_ia = perguntar_llm_seguro(message, "")
                 resposta = resposta_ia or f"Boa noite, {nome}."
             else:
                 resposta = f"Boa noite, {nome}."
@@ -647,7 +619,7 @@ class Brain:
                 # Tem mais coisa na frase alem do "oi" (ex.: "oi, meu nome e caio").
                 # Manda a frase inteira pra IA: ela cumprimenta e responde ao
                 # mesmo tempo, usando o nome certo, sem resposta duplicada.
-                resposta_ia = perguntar_llm(message, "")
+                resposta_ia = perguntar_llm_seguro(message, "")
                 resposta = resposta_ia or random.choice(
                     [f"Oi, {nome}.", f"Olá, {nome}.", f"E aí, {nome}."]
                 )
@@ -694,19 +666,6 @@ class Brain:
             resposta_final = self.personality.aplicar(
                 "Não consegui calcular essa conta."
             )
-            self._finalizar(sessao, message, resposta_final)
-            return resposta_final
-
-        if modulo == "memoria":
-            conteudo = (
-                processed_message.replace("lembre que", "")
-                .replace("lembrar que", "")
-                .strip()
-            )
-            salvar_permanente(conteudo)
-            sessao.context.update_topic(conteudo.split()[0] if conteudo else "nota")
-
-            resposta_final = self.personality.aplicar("Informação salva.")
             self._finalizar(sessao, message, resposta_final)
             return resposta_final
 
@@ -847,7 +806,4 @@ class Brain:
 # INSTÂNCIA GLOBAL
 # =============================================================
 
-from core.memory_control import MemoryControl
-
 brain = Brain()
-brain.register_module("memory_control", MemoryControl())
