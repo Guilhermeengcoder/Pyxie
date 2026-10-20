@@ -9,6 +9,7 @@ pydantic
 groq
 python-dotenv
 google-genai
+tzdata
 
 # HTTP
 requests

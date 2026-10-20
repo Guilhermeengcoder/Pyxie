@@ -1,10 +1,13 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from core.brain import brain
 from core import usage
+from core import usage_gemini
+from core import llm
+from core import llm_config
 
 app = FastAPI(title="PYXIE API")
 
@@ -26,8 +29,31 @@ class Pergunta(BaseModel):
     imagem: Optional[str] = None
 
 
+class NovoModo(BaseModel):
+    modo: Literal["groq", "gemini", "auto"]
+
+
+def _uso_atual() -> dict:
+    """Uso do provedor que o painel deve mostrar (com 'provedor' e 'modo')."""
+    provedor = llm.provedor_do_painel()
+
+    if provedor == "gemini":
+        dados = usage_gemini.obter()
+    else:
+        dados = usage.ultimo()
+
+    dados["provedor"] = provedor
+    dados["modo"] = llm_config.obter_modo()
+    return dados
+
+
+# IMPORTANTE: estes endpoints são "def" (não "async def") de propósito.
+# O rastreio do provedor é por thread; a requisição inteira precisa
+# rodar na mesma thread.
 @app.post("/perguntar")
 def perguntar(pergunta: Pergunta):
+
+    llm.iniciar_rastreio()
 
     if pergunta.imagem:
         if (
@@ -48,12 +74,18 @@ def perguntar(pergunta: Pergunta):
     else:
         resposta = brain.process(pergunta.mensagem, chat_id=pergunta.chat_id)
 
-    return {"resposta": resposta, "uso": usage.ultimo()}
+    return {
+        "resposta": resposta,
+        "uso": _uso_atual(),
+        "aviso": llm.aviso_da_requisicao(),
+    }
 
 
 
 @app.post("/regenerar/{chat_id}")
 def regenerar_resposta(chat_id: str):
+    llm.iniciar_rastreio()
+
     resultado = brain.regenerar(chat_id=chat_id)
 
     if not resultado["ok"]:
@@ -64,7 +96,8 @@ def regenerar_resposta(chat_id: str):
 
     return {
         "resposta": resultado["resposta"],
-        "uso": usage.ultimo()
+        "uso": _uso_atual(),
+        "aviso": llm.aviso_da_requisicao(),
     }
 
 
@@ -77,7 +110,21 @@ def encerrar_chat(chat_id: str):
 
 @app.get("/uso")
 def uso():
-    return usage.ultimo()
+    return _uso_atual()
+
+
+# ATENÇÃO: sem autenticação por enquanto (item 4 do roadmap de segurança).
+# Quem tiver a URL consegue trocar o modo. Trocar para o Gemini não vaza
+# memória (a trava do llm.py continua valendo), mas muda o comportamento.
+@app.get("/modo")
+def ler_modo():
+    return {"modo": llm_config.obter_modo(), "modos": list(llm_config.MODOS)}
+
+
+@app.post("/modo")
+def trocar_modo(novo: NovoModo):
+    llm_config.definir_modo(novo.modo)
+    return {"modo": llm_config.obter_modo(), "modos": list(llm_config.MODOS)}
 
 
 app.mount(

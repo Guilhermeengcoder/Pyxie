@@ -14,8 +14,9 @@
 import os
 import re
 
-from modules.groq_ai import client, _montar_prompt
+from modules.groq_ai import client, _montar_prompt, traduzir_erro_groq
 from core.usage import registrar_headers
+from core.llm_erros import ErroLLM
 
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 
@@ -27,6 +28,8 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
     comando          -> o que o usuário escreveu (pode vir vazio)
     imagem_data_url  -> "data:image/jpeg;base64,...."
     memoria          -> histórico curto da conversa (texto)
+
+    Em caso de falha levanta ErroCota, ErroIndisponivel ou ErroLLM.
     """
     pergunta = (comando or "").strip() or "Descreva o que você vê nesta imagem."
 
@@ -61,8 +64,12 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
 
         texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.DOTALL).strip()
 
-        return texto or "Não consegui analisar essa imagem."
-
     except Exception as e:
-        print(f"[Groq visão] {e}")
-        return "Não consegui analisar essa imagem agora."
+        erro = traduzir_erro_groq(e)
+        print(f"[Groq visão] {erro}")
+        raise erro from e
+
+    if not texto:
+        raise ErroLLM("groq", "resposta vazia da visão")
+
+    return texto

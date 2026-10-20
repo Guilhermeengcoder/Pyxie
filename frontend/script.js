@@ -1346,6 +1346,10 @@ async function regenerarResposta(conversaId) {
             atualizarPainelUso(dados.uso);
         }
 
+        if (dados.aviso) {
+            mostrarAviso(dados.aviso, 12000);
+        }
+
     } catch (erro) {
         console.error("Erro ao regenerar a resposta:", erro);
 
@@ -1783,20 +1787,21 @@ function removerIndicador() {
 // AVISOS
 // ========================================
 
-function mostrarAviso(texto) {
+function mostrarAviso(texto, duracao = 5000) {
+
     if (!aviso) {
         console.warn(texto);
         return;
-    }
+    }   
 
     aviso.textContent = texto;
     aviso.hidden = false;
 
     clearTimeout(timerAviso);
 
-    timerAviso = setTimeout(() => {
+        timerAviso = setTimeout(() => {
         aviso.hidden = true;
-    }, 5000);
+    }, duracao);
 }
 
 
@@ -2185,6 +2190,11 @@ async function enviarMensagem() {
         if (dados.uso) {
             atualizarPainelUso(dados.uso);
         }
+
+        if (dados.aviso) {
+            mostrarAviso(dados.aviso, 12000);
+        }
+
     } catch (erro) {
         console.error("Erro ao conversar com a PYXIE:", erro);
 

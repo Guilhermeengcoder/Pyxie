@@ -11,6 +11,18 @@ import importlib
 # =============================================================
 _cache: dict | None = None
 
+# Arquivos de modules/ que NÃO são módulos de comando (provedores de IA
+# e auxiliares). Não precisam ser importados pelo loader; o core/llm.py
+# carrega os provedores sob demanda. Ao adicionar um novo provedor, inclua-o aqui.
+IGNORAR = {
+    "__init__.py",
+    "gemini_ai.py",
+    "groq_ai.py",
+    "groq_vision.py",
+    "ollama_ai.py",
+    "groq_uso.py",
+}
+
 
 def carregar_modulos() -> dict:
     global _cache
@@ -29,7 +41,7 @@ def carregar_modulos() -> dict:
         return {}
 
     for arquivo in os.listdir(pasta_modulos):
-        if not arquivo.endswith(".py") or arquivo == "__init__.py":
+        if not arquivo.endswith(".py") or arquivo in IGNORAR:
             continue
 
         nome_modulo = arquivo[:-3]
@@ -74,3 +86,6 @@ def recarregar_modulos() -> dict:
     global _cache
     _cache = None
     return carregar_modulos()
+
+IGNORAR = {"__init__.py", "gemini_ai.py", "groq_ai.py",
+           "groq_vision.py", "ollama_ai.py", "groq_uso.py"}

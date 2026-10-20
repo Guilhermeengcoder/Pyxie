@@ -345,6 +345,17 @@ class ShortTermMemory:
 
         self._salvar()
         return True
+    
+    def remover_ultima_do_usuario(self) -> bool:
+        """
+        Remove a última mensagem se for do usuário (pergunta que ficou
+        sem resposta porque o modelo falhou).
+        """
+        if self._messages and self._messages[-1].role == "user":
+            self._messages.pop()
+            self._salvar()
+            return True
+        return False
 
 
     # ----------------------------------------------------------

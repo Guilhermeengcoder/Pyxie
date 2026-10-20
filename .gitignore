@@ -6,7 +6,8 @@ data/*.db-wal
 data/*.db-shm
 data/knowledge.json
 data/reminders.json
-memory.json
+data/llm_config.json
+data/*.bak
 data/stm/
+memory.json
 memory.json.bak
-data/pyxie_memory.db.bak

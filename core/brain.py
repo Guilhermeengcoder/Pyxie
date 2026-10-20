@@ -21,9 +21,18 @@ from core.decision import decidir
 from core.chat_session import SessionManager, ChatSession
 from core import memory_json
 
-from core.llm import perguntar_llm, perguntar_llm_imagem
-from core.llm_erros import ErroLLM, mensagem_de_erro_llm
+from core.llm_erros import (
+    ErroLLM,
+    ErroCota,
+    ErroIndisponivel,
+    mensagem_de_erro_llm,
+)
 
+from core.llm import (
+    perguntar_llm,
+    perguntar_llm_imagem,
+    provedor_confiavel,
+)
 
 # =============================================================
 # FUNÇÕES AUXILIARES
@@ -275,6 +284,15 @@ class Brain:
             if memory_json.desfazer():
                 return "Pronto, desfiz a última alteração na memória fixa."
             return "Não há nenhuma alteração para desfazer."
+        
+        # A edição manda o JSON inteiro da memória dentro da pergunta,
+        # então só pode rodar em provedor de confiança.
+        if not provedor_confiavel():
+            return (
+                "A edição de memória só funciona com o Groq ativo, "
+                "porque ela envia minha memória ao modelo. "
+                "Não alterei nada."
+            )
 
         try:
             dados = memory_json.carregar_estrito()
@@ -286,7 +304,9 @@ class Brain:
             texto = perguntar_llm(
                 memory_json.montar_prompt_edicao(message, dados),
                 "(tarefa técnica, sem cumprimentos)",
+                sensivel=True,
             )
+            
         except Exception:
             texto = None
 
@@ -356,18 +376,26 @@ class Brain:
 
         sessao.stm.add_message("user", f"[imagem enviada] {pergunta}")
 
+        erro_llm = None
         try:
             resposta = perguntar_llm_imagem(pergunta, imagem, historico)
-        except Exception:
+        except Exception as erro:
+            print(f"[ERRO LLM imagem]: {erro}")
             resposta = None
+            erro_llm = erro
 
-        if not resposta:
-            resposta = "Não consegui analisar essa imagem agora."
+        falhou = not resposta
+
+        if falhou:
+            if isinstance(erro_llm, (ErroCota, ErroIndisponivel)):
+                resposta = mensagem_de_erro_llm(erro_llm)
+            else:
+                resposta = "Não consegui analisar essa imagem agora."
 
         resposta_final = self.personality.aplicar(resposta)
-        self._finalizar(sessao, message, resposta_final)
+        self._finalizar(sessao, message, resposta_final, erro=falhou)
         return resposta_final
-
+    
     # ----------------------------------------------------------
     # RESPOSTA PELO LLM (fallback e conteúdo extenso)
     # ----------------------------------------------------------
@@ -392,27 +420,31 @@ class Brain:
             elif m["role"] == "assistant":
                 contexto_historico += f"PYXIE: {m['content']}\n"
 
-        # Memória fixa (Redis ou memory.json) em texto para a IA.
-        contexto_memoria_fixa = memoria_fixa_relevante(
-            self.memoria_fixa, original_message
-        )
-
-        contexto_final = (
-            (
-                "INFORMAÇÕES FIXAS DA PYXIE (memory.json):\n"
-                + contexto_memoria_fixa
-                + "\n\n"
-                if contexto_memoria_fixa
-                else ""
+        # Memória fixa só é carregada (nem vai ao Redis) quando o provedor
+        # ativo é de confiança. O llm.py repete essa checagem.
+        memoria_fixa_txt = ""
+        if provedor_confiavel():
+            contexto_memoria_fixa = memoria_fixa_relevante(
+                self.memoria_fixa, original_message
             )
-            + contexto_historico
-            + "\n\n"
-            + contexto_extra[:100]
+            if contexto_memoria_fixa:
+                memoria_fixa_txt = (
+                    "INFORMAÇÕES FIXAS DA PYXIE (memory.json):\n"
+                    + contexto_memoria_fixa
+                )
+
+        # Histórico + entidade: pode ir a qualquer provedor.
+        contexto_final = (
+            contexto_historico + "\n\n" + contexto_extra[:100]
         ).strip()
 
         erro_llm = None
         try:
-            response = perguntar_llm(mensagem_para_ia, contexto_final)
+            response = perguntar_llm(
+                mensagem_para_ia,
+                contexto_final,
+                memoria_fixa=memoria_fixa_txt,
+            )
         except Exception as erro:
             print(f"[ERRO LLM no fallback]: {erro}")
             response = None
@@ -423,6 +455,7 @@ class Brain:
 
             sessao.regeneracao_pergunta = mensagem_para_ia
             sessao.regeneracao_contexto = contexto_final
+            sessao.regeneracao_memoria_fixa = memoria_fixa_txt
             self._finalizar(sessao, mensagem_original, resposta_final)
             return resposta_final
 
@@ -435,9 +468,9 @@ class Brain:
                 else "Ainda não encontrei uma resposta para isso."
             )
         )
-        self._finalizar(sessao, mensagem_original, resposta_final)
+        self._finalizar(sessao, mensagem_original, resposta_final, erro=True)
         return resposta_final
-
+    
     # ----------------------------------------------------------
     # PROCESSAMENTO DE UMA ÚNICA TAREFA
     # ----------------------------------------------------------
@@ -729,7 +762,24 @@ class Brain:
     # FINALIZAÇÃO — STM
     # ----------------------------------------------------------
 
-    def _finalizar(self, sessao: ChatSession, user_input: str, resposta: str):
+    def _finalizar(
+        self,
+        sessao: ChatSession,
+        user_input: str,
+        resposta: str,
+        erro: bool = False,
+    ):
+        if erro:
+            # Falha do modelo: a pergunta ainda não tem resposta, então sai
+            # do histórico junto com a mensagem de erro (que nem é gravada).
+            # Também zera a regeneração, para o botão não refazer uma
+            # resposta antiga no lugar do erro.
+            sessao.stm.remover_ultima_do_usuario()
+            sessao.regeneracao_pergunta = None
+            sessao.regeneracao_contexto = None
+            sessao.regeneracao_memoria_fixa = ""
+            return
+
         sessao.stm.add_message("assistant", resposta)
         sessao.ultima_pergunta = user_input
 
@@ -769,7 +819,14 @@ class Brain:
                 }
 
             try:
-                response = perguntar_llm(pergunta, contexto)
+                response = perguntar_llm(
+                    pergunta,
+                    contexto,
+                    memoria_fixa=getattr(
+                        sessao, "regeneracao_memoria_fixa", ""
+                    ),
+                )
+                
             except Exception as erro:
                 print(f"[ERRO ao regenerar resposta]: {erro}")
                 response = None
