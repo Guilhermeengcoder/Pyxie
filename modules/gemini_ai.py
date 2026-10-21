@@ -1,3 +1,4 @@
+import base64
 import os
 
 from dotenv import load_dotenv
@@ -95,6 +96,90 @@ def perguntar_gemini(comando: str, memoria: str = "") -> str:
 
     if not texto:
         raise ErroLLM("gemini", "resposta vazia")
+
+    return texto
+
+# ================================================================
+# GEMINI — IMAGEM
+#
+# Privacidade (decisão "opção A"): o Gemini recebe SÓ a imagem e a
+# pergunta. O histórico da conversa e a memória fixa NÃO vão junto;
+# o parâmetro `memoria` existe apenas para manter a mesma assinatura
+# do Groq e é ignorado de propósito.
+# ================================================================
+
+MIMES_IMAGEM = {"image/jpeg", "image/png", "image/webp"}
+
+# Texto no lugar do histórico: evita que o prompt peça um cumprimento
+# (ele só cumprimenta quando o histórico está vazio).
+SEM_HISTORICO = "(sem histórico: neste modo a imagem é enviada sozinha)"
+
+
+def _separar_data_url(data_url: str):
+    """'data:image/jpeg;base64,AAAA' -> ('image/jpeg', 'AAAA'). Valida o formato."""
+    cabecalho, separador, dados = str(data_url or "").partition(",")
+
+    if (
+        not separador
+        or not cabecalho.startswith("data:")
+        or not cabecalho.endswith(";base64")
+    ):
+        raise ErroLLM("gemini", "imagem inválida (esperado data URL base64)")
+
+    mime = cabecalho[len("data:"):-len(";base64")].strip().lower()
+
+    if mime not in MIMES_IMAGEM:
+        raise ErroLLM("gemini", f"tipo de imagem não suportado: {mime or '?'}")
+
+    dados = "".join(dados.split())
+
+    try:
+        base64.b64decode(dados, validate=True)
+    except Exception:
+        raise ErroLLM("gemini", "imagem inválida (base64 corrompido)")
+
+    return mime, dados
+
+
+def perguntar_gemini_imagem(comando: str, imagem_data_url: str, memoria: str = "") -> str:
+    """
+    comando          -> o que o usuário escreveu (pode vir vazio)
+    imagem_data_url  -> "data:image/jpeg;base64,...."
+    memoria          -> IGNORADA (ver nota de privacidade acima)
+
+    Em caso de falha levanta ErroCota, ErroIndisponivel ou ErroLLM.
+    """
+    mime, dados = _separar_data_url(imagem_data_url)
+
+    pergunta = (comando or "").strip() or "Descreva o que você vê nesta imagem."
+    pergunta += (
+        "\n(O usuário anexou uma imagem. Responda com base no que você vê nela.)"
+    )
+
+    prompt = montar_prompt(pergunta, SEM_HISTORICO)
+
+    entrada = [
+        {"type": "text", "text": prompt},
+        {"type": "image", "data": dados, "mime_type": mime},
+    ]
+
+    try:
+        interaction = client.interactions.create(model=GEMINI_MODEL, input=entrada)
+    except Exception as e:
+        print(f"[Gemini imagem] {e}")
+        raise _traduzir_erro(e) from e
+
+    try:
+        usage_gemini.registrar(
+            usage_gemini.tokens_da_interacao(interaction, prompt)
+        )
+    except Exception as e:
+        print(f"[usage_gemini] {e}")  # nunca quebra a resposta
+
+    texto = (interaction.output_text or "").strip()
+
+    if not texto:
+        raise ErroLLM("gemini", "resposta vazia da imagem")
 
     return texto
 

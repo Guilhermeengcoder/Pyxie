@@ -79,6 +79,8 @@ _PROVEDORES = {
     "gemini": {
         "modulo": "modules.gemini_ai",
         "texto": "perguntar_gemini",
+        "modulo_imagem": "modules.gemini_ai",
+        "imagem": "perguntar_gemini_imagem",
     },
     "ollama": {
         "modulo": "modules.ollama_ai",
@@ -219,6 +221,51 @@ def perguntar_llm(
 
 
 def perguntar_llm_imagem(pergunta, imagem, contexto):
-    # Hoje só o Groq tem visão; o passo 7 acrescenta o Gemini.
-    funcao = _carregar("groq", "modulo_imagem", "imagem")
-    return funcao(pergunta, imagem, contexto)
+    """
+    Respeita o seletor de modo, como o texto (groq / gemini / auto).
+
+    Privacidade (opção A): um provedor SEM confiança recebe só a imagem
+    e a pergunta; o histórico não vai, e a pergunta passa pelo filtro
+    de segredos antes. A memória fixa nunca vai em imagem.
+
+    Pausas: imagem não lê nem grava pausas. Os limites do Groq são por
+    modelo, e o 429 do modelo de visão não quer dizer que o modelo de
+    texto esgotou; pausar o Groq inteiro desviaria o texto para o Gemini.
+    """
+    modo = llm_config.obter_modo()
+    tentativas = [
+        p for p in _ordem(modo) if "imagem" in _PROVEDORES.get(p, {})
+    ]
+
+    if not tentativas:
+        raise ErroLLM(modo, "nenhum provedor deste modo aceita imagem")
+
+    primeiro_erro = None
+
+    for nome in tentativas:
+        ctx = contexto
+
+        if nome not in PROVEDORES_CONFIAVEIS:
+            ctx = ""  # sem histórico fora dos provedores de confiança
+
+            achados = detectar_segredos(str(pergunta or ""))
+            if achados:
+                raise ErroSegredo(
+                    nome, "possível segredo: " + ", ".join(achados)
+                )
+
+        try:
+            funcao = _carregar(nome, "modulo_imagem", "imagem")
+            texto = funcao(pergunta, imagem, ctx)
+            _registrar_uso(nome)
+            return texto
+
+        except (ErroCota, ErroIndisponivel, ErroEntradaGrande) as erro:
+            primeiro_erro = primeiro_erro or erro
+
+        except ErroLLM:
+            if primeiro_erro is not None:
+                break  # o erro útil é o primeiro
+            raise
+
+    raise primeiro_erro

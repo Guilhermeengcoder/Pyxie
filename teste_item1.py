@@ -1,64 +1,108 @@
-import os
 import re
-import tempfile
+import subprocess
+import sys
 from pathlib import Path
-from unittest.mock import patch
 
-os.environ.setdefault("GROQ_API_KEY", "chave-falsa")
+from core.filtro_segredos import detectar_segredos
 
-from fastapi.testclient import TestClient
+ESTE = Path(__file__).name
+falhas = []
 
-from api import main as api_main
-from core import llm_config as cfg
-from core import memory_json
 
-# ---------- 1) API do seletor ----------
-tmp = Path(tempfile.mkdtemp()) / "llm_config.json"
-client = TestClient(api_main.app)
+def git(*args):
+    r = subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8")
+    if r.returncode != 0:
+        print("git falhou:", r.stderr.strip())
+        sys.exit(1)
+    return r.stdout
 
-with patch.object(cfg, "ARQUIVO", tmp), \
-     patch.object(memory_json, "_remoto", return_value=False):
 
-    cfg._ultimo_conhecido = None
-    cfg.invalidar_cache()
+rastreados = git("ls-files").splitlines()
+status = git("status", "--porcelain").splitlines()
 
-    r = client.get("/modo")
-    assert r.status_code == 200 and r.json()["modo"] == "groq", r.text
 
-    for modo in ("gemini", "auto", "groq"):
-        r = client.post("/modo", json={"modo": modo})
-        assert r.status_code == 200 and r.json()["modo"] == modo, r.text
-        assert client.get("/modo").json()["modo"] == modo
+def ok(msg):
+    print("OK:", msg)
 
-    assert client.post("/modo", json={"modo": "xyz"}).status_code == 422
-    assert client.get("/modo").json()["modo"] == "groq"
-print("1 OK: GET/POST /modo trocam e recusam modo inválido")
 
-# ---------- 2) HTML ----------
-html = Path("frontend/index.html").read_text(encoding="utf-8")
-js = Path("frontend/script.js").read_text(encoding="utf-8")
-css = Path("frontend/style.css").read_text(encoding="utf-8")
+def falha(msg):
+    falhas.append(msg)
+    print("FALHOU:", msg)
 
-assert html.count("<h1>") == html.count("</h1>") == 1
-modos = re.findall(r'class="modo-btn"[^>]*data-modo="(\w+)"', html)
-assert modos == ["groq", "gemini", "auto"], modos
-print("2 OK: <h1> fechado e 3 botões de modo no HTML")
 
-# ---------- 3) ids do script.js existem no HTML ----------
-usados = set(re.findall(r'getElementById\("([^"]+)"\)', js))
-criados_por_js = {"indicador", "menu-compartilhamento-pyxie"}
-ids_html = set(re.findall(r'id="([^"]+)"', html))
-faltando = usados - ids_html - criados_por_js
-assert not faltando, f"ids do script.js que não existem no HTML: {faltando}"
-print("3 OK: todo getElementById do script.js existe no HTML")
+# 1) testes soltos
+soltos = [f for f in rastreados if re.match(r"^(teste|testar)[_\w]*\.py$", Path(f).name) and f != ESTE]
+presentes = [p.name for p in Path(".").glob("teste*.py") if p.name != ESTE] + \
+            [p.name for p in Path(".").glob("testar*.py")]
+if soltos or presentes:
+    falha(f"testes ainda no projeto: rastreados={soltos} locais={sorted(set(presentes))}")
+else:
+    ok("nenhum teste_*.py / testar_*.py no projeto")
 
-# ---------- 4) colagens do JS e do CSS ----------
-assert "function trocarModo" in js and "function carregarModo" in js
-assert js.count("function trocarModo") == 1
-assert re.search(r"carregarUsoInicial\(\);\s*\n\s*(//[^\n]*\n\s*)?carregarModo\(\);", js), \
-    "carregarModo() não está logo depois de carregarUsoInicial() no fim"
-assert js.index("SELETOR DE MODO") < js.index("INICIALIZAÇÃO")
-for seletor in (".seletor-modo", ".modo-btn", ".aviso.aviso-info", ".uso-grupo[hidden]"):
-    assert css.count(seletor) >= 1, seletor
-assert css.rstrip().endswith("}")
-print("4 OK: JS e CSS colados nos lugares certos")
+# 2) nada sensível no git status nem rastreado
+sens = re.compile(r"(^|/)(\.env|memory\.json(\.bak)?|data/(?!identity\.json)[^/]+|data/stm/.*)$")
+no_status = [l for l in status if sens.search(l[3:].strip().strip('"'))]
+no_git = [f for f in rastreados if sens.search(f)]
+if no_status or no_git:
+    falha(f"arquivos sensíveis/locais: status={no_status} rastreados={no_git}")
+else:
+    ok("git status e git ls-files sem .env, memory.json nem data/ (exceto identity.json)")
+
+# 3) .gitignore cobre o que o app gera
+gi = Path(".gitignore").read_text(encoding="utf-8").splitlines()
+precisa = [".env", "memory.json", "memory.json.bak", "data/stm/", "data/llm_config.json",
+           "data/knowledge.json", "data/reminders.json", "data/gemini_uso.json"]
+faltam = [p for p in precisa if p not in gi]
+if faltam:
+    falha(f".gitignore sem: {faltam}")
+else:
+    ok(".gitignore cobre os arquivos gerados pelo app")
+
+# 4) requirements
+req = Path("requirements.txt").read_text(encoding="utf-8").lower()
+faltam = [p for p in ("tzdata", "google-genai", "groq", "fastapi", "uvicorn", "requests", "python-dotenv")
+          if p not in req]
+if faltam:
+    falha(f"requirements.txt sem: {faltam}")
+else:
+    ok("requirements.txt tem tzdata e as dependências dos provedores")
+
+# 5) .env: só nomes de variáveis, nunca valores
+env = Path(".env")
+if env.exists():
+    nomes = {l.split("=", 1)[0].strip() for l in env.read_text(encoding="utf-8").splitlines()
+             if "=" in l and not l.lstrip().startswith("#")}
+    if "GROQ_BASE_URL" in nomes:
+        falha("GROQ_BASE_URL ainda está no .env (apague a linha)")
+    else:
+        ok("GROQ_BASE_URL não está no .env")
+    obrig = {"GROQ_API_KEY", "GEMINI_API_KEY", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"}
+    if obrig - nomes:
+        falha(f".env sem as variáveis: {sorted(obrig - nomes)}")
+    else:
+        ok(".env tem as 4 variáveis obrigatórias (valores não lidos)")
+else:
+    print("PULADO: .env não existe aqui")
+
+# 6) nenhum segredo literal em arquivo rastreado
+achados = []
+for f in rastreados:
+    if f == ESTE or not f.endswith((".py", ".js", ".html", ".css", ".json", ".sh", ".txt", ".md")):
+        continue
+    try:
+        texto = Path(f).read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        continue
+    tipos = detectar_segredos(texto)
+    if tipos:
+        achados.append((f, tipos))
+if achados:
+    falha(f"possíveis segredos em arquivos rastreados: {achados}")
+else:
+    ok("nenhum padrão de chave/senha nos arquivos rastreados")
+
+print()
+if falhas:
+    print(f"{len(falhas)} pendência(s) antes do push.")
+    sys.exit(1)
+print("Tudo certo para o push. Apague este teste_item4.py antes do commit.")

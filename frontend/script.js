@@ -1347,7 +1347,7 @@ async function regenerarResposta(conversaId) {
         }
 
         if (dados.aviso) {
-            mostrarAviso(dados.aviso, 12000);
+            mostrarAviso(dados.aviso, 12000, "info");
         }
 
     } catch (erro) {
@@ -1787,19 +1787,23 @@ function removerIndicador() {
 // AVISOS
 // ========================================
 
-function mostrarAviso(texto, duracao = 5000) {
+function mostrarAviso(texto, duracao = 5000, tipo = "erro") {
 
     if (!aviso) {
         console.warn(texto);
         return;
-    }   
+    }
 
     aviso.textContent = texto;
+
+    // "info" usa o tom azul-acinzentado; qualquer outro tipo volta ao vermelho.
+    aviso.classList.toggle("aviso-info", tipo === "info");
+
     aviso.hidden = false;
 
     clearTimeout(timerAviso);
 
-        timerAviso = setTimeout(() => {
+    timerAviso = setTimeout(() => {
         aviso.hidden = true;
     }, duracao);
 }
@@ -2192,7 +2196,7 @@ async function enviarMensagem() {
         }
 
         if (dados.aviso) {
-            mostrarAviso(dados.aviso, 12000);
+            mostrarAviso(dados.aviso, 12000, "info");
         }
 
     } catch (erro) {
@@ -2362,27 +2366,127 @@ function iniciarContagemReset(segundos, limite) {
     tickReset();
 }
 
-function atualizarPainelUso(uso) {
-    if (!uso || !painelUso) return;
+// ----- Painel de uso: Groq e Gemini -----
 
+// Timer do Gemini (reset diário). Separado do timer do Groq.
+let geminiPrazo = null;      // momento (ms) em que o contador diário reinicia
+let timerGemini = null;
+
+function pararContagemResetGroq() {
+    clearInterval(timerReset);
+    timerReset = null;
+    resetPrazo = null;
+}
+
+function pararContagemResetGemini() {
+    clearInterval(timerGemini);
+    timerGemini = null;
+    geminiPrazo = null;
+}
+
+// 27120 s -> "reseta em 7h 32m"; 2400 s -> "reseta em 40m"
+function formatarResetDiario(segundos) {
+    if (segundos <= 0) return "contador reiniciado";
+    if (segundos < 60) return "reseta em menos de 1m";
+
+    const minutos = Math.ceil(segundos / 60);
+    const h = Math.floor(minutos / 60);
+    const m = minutos % 60;
+
+    if (h > 0) {
+        return "reseta em " + h + "h " + String(m).padStart(2, "0") + "m";
+    }
+    return "reseta em " + m + "m";
+}
+
+function tickResetGemini() {
+    const elReset = document.getElementById("uso-gem-reset");
+
+    if (geminiPrazo === null || !elReset) return;
+
+    const restante = (geminiPrazo - Date.now()) / 1000;
+
+    elReset.textContent = formatarResetDiario(restante);
+
+    if (restante <= 0) {
+        pararContagemResetGemini();
+    }
+}
+
+function iniciarContagemResetGemini(segundos) {
+    pararContagemResetGemini();
+
+    geminiPrazo = Date.now() + segundos * 1000;
+    timerGemini = setInterval(tickResetGemini, 60000); // minutos: não precisa de mais
+
+    tickResetGemini();
+}
+
+function atualizarPainelGemini(uso) {
+    const elModelo = document.getElementById("uso-gem-modelo");
+    const elPedidosTexto = document.getElementById("uso-gem-pedidos-texto");
+    const elPedidosBarra = document.getElementById("uso-gem-pedidos-barra");
+    const elReset = document.getElementById("uso-gem-reset");
+    const elTokensTexto = document.getElementById("uso-gem-tokens-texto");
+    const elTokensFundo = document.getElementById("uso-gem-tokens-fundo");
+    const elTokensBarra = document.getElementById("uso-gem-tokens-barra");
+
+    if (elModelo) elModelo.textContent = uso.modelo || "—";
+
+    // Pedidos: com limite mostra "usados / limite" e a barra do que resta;
+    // sem limite mostra só o número usado e esconde a barra.
+    const temLimitePedidos = Number.isFinite(uso.pedidos_limite) && uso.pedidos_limite > 0;
+    const fundoPedidos = elPedidosBarra ? elPedidosBarra.parentElement : null;
+
+    if (elPedidosTexto) {
+        elPedidosTexto.textContent = temLimitePedidos
+            ? formatarNumero(uso.pedidos_usados) + " / " + formatarNumero(uso.pedidos_limite)
+            : formatarNumero(uso.pedidos_usados);
+    }
+
+    if (fundoPedidos) fundoPedidos.hidden = !temLimitePedidos;
+
+    if (elPedidosBarra && temLimitePedidos) {
+        atualizarBarra(
+            elPedidosBarra,
+            uso.pedidos_restantes,
+            uso.pedidos_limite
+        );
+    }
+
+    // Tokens: sempre o número usado; a barra só existe com limite configurado.
+    if (elTokensTexto) {
+        elTokensTexto.textContent = formatarNumero(uso.tokens_usados);
+    }
+
+    const temLimiteTokens = Number.isFinite(uso.tokens_limite) && uso.tokens_limite > 0;
+
+    if (elTokensFundo) elTokensFundo.hidden = !temLimiteTokens;
+
+    if (elTokensBarra && temLimiteTokens) {
+        atualizarBarra(
+            elTokensBarra,
+            uso.tokens_restantes,
+            uso.tokens_limite
+        );
+    }
+
+    // Reset diário.
+    if (Number.isFinite(uso.reset_s)) {
+        iniciarContagemResetGemini(uso.reset_s);
+    } else {
+        pararContagemResetGemini();
+        if (elReset) elReset.textContent = "";
+    }
+}
+
+function atualizarPainelGroq(uso) {
     const elModelo = document.getElementById("uso-modelo");
     const elTokensTexto = document.getElementById("uso-tokens-texto");
     const elTokensBarra = document.getElementById("uso-tokens-barra");
     const elTokensReset = document.getElementById("uso-tokens-reset");
     const elPedidosTexto = document.getElementById("uso-pedidos-texto");
     const elPedidosBarra = document.getElementById("uso-pedidos-barra");
-    const elVazio = document.getElementById("uso-vazio");
-    const elConteudo = document.getElementById("uso-conteudo");
-
-    if (!uso.modelo) {
-        // Ainda não houve nenhuma chamada à Groq nesta sessão do servidor.
-        if (elVazio) elVazio.hidden = false;
-        if (elConteudo) elConteudo.hidden = true;
-        return;
-    }
-
-    if (elVazio) elVazio.hidden = true;
-    if (elConteudo) elConteudo.hidden = false;
 
     if (elModelo) elModelo.textContent = uso.modelo;
 
@@ -2423,6 +2527,43 @@ function atualizarPainelUso(uso) {
             uso.requests_restantes,
             uso.requests_limite
         );
+    }
+}
+
+function atualizarPainelUso(uso) {
+    if (!uso || !painelUso) return;
+
+    const elVazio = document.getElementById("uso-vazio");
+    const elConteudo = document.getElementById("uso-conteudo");
+    const elGrupoGroq = document.getElementById("uso-groq");
+    const elGrupoGemini = document.getElementById("uso-gemini");
+
+    const ehGemini = uso.provedor === "gemini";
+
+    // O Groq só tem dados depois da primeira chamada; o Gemini sempre tem
+    // (o contador local começa em zero).
+    if (!ehGemini && !uso.modelo) {
+        pararContagemResetGroq();
+        pararContagemResetGemini();
+
+        if (elVazio) elVazio.hidden = false;
+        if (elConteudo) elConteudo.hidden = true;
+        return;
+    }
+
+    if (elVazio) elVazio.hidden = true;
+    if (elConteudo) elConteudo.hidden = false;
+
+    if (elGrupoGroq) elGrupoGroq.hidden = ehGemini;
+    if (elGrupoGemini) elGrupoGemini.hidden = !ehGemini;
+
+    // Só um timer vivo por vez: o do grupo que está escondido para.
+    if (ehGemini) {
+        pararContagemResetGroq();
+        atualizarPainelGemini(uso);
+    } else {
+        pararContagemResetGemini();
+        atualizarPainelGroq(uso);
     }
 }
 
