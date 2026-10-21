@@ -1583,3 +1583,520 @@ hr {
             transparent 52%
         );
 }
+
+
+
+/* ================================
+   SELETOR DE MODO (GROQ / GEMINI / AUTO)
+================================ */
+
+.uso-grupo[hidden] {
+    display: none;
+}
+
+.seletor-modo {
+    flex-shrink: 0;
+
+    margin-top: 20px;
+    padding-top: 16px;
+
+    border-top: 1px solid var(--borda);
+}
+
+.seletor-titulo {
+    margin-bottom: 8px;
+
+    color: var(--texto-suave);
+
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.modo-opcoes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+
+    padding: 4px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 10px;
+
+    background: var(--bg-input);
+}
+
+.modo-btn {
+    padding: 8px 6px;
+
+    border: none;
+    border-radius: 7px;
+
+    background: transparent;
+
+    color: var(--texto-suave);
+
+    font-size: 13px;
+
+    cursor: pointer;
+
+    transition: background 0.15s, color 0.15s;
+}
+
+.modo-btn:hover:not(:disabled):not([aria-checked="true"]) {
+    background: var(--bg-hover);
+    color: var(--texto);
+}
+
+.modo-btn[aria-checked="true"] {
+    background: var(--acento);
+
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.modo-btn:disabled {
+    opacity: 0.6;
+
+    cursor: wait;
+}
+
+.modo-descricao {
+    margin-top: 10px;
+
+    color: var(--texto-suave);
+
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .modo-btn {
+        transition: none;
+    }
+}
+
+
+/* ================================
+   AVISOS INFORMATIVOS (modo reserva)
+   Tom azul-acinzentado, para não parecer erro.
+   Usado no passo 2c.
+================================ */
+
+.aviso.aviso-info {
+    background: #0f1d29;
+
+    color: #9ccbe8;
+}
+
+
+/* ========================================
+   PYXIE — MENU RÁPIDO FAIRY TAIL
+======================================== */
+
+.chat-input {
+    position: relative;
+    z-index: 5;
+}
+
+.input-box {
+    gap: 10px;
+    padding: 7px;
+    border-color: #303039;
+    background: rgba(17, 16, 22, 0.96);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        background 0.2s ease;
+}
+
+.input-box:focus-within {
+    border-color: #76212d;
+    background: #121116;
+    box-shadow:
+        0 0 0 3px rgba(139, 0, 0, 0.10),
+        0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+/* Área do emblema e do menu */
+
+.menu-rapido-container {
+    position: relative;
+    flex-shrink: 0;
+    align-self: flex-end;
+}
+
+.btn-menu-rapido {
+    width: 42px;
+    height: 42px;
+    padding: 8px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border: 1px solid #38313d;
+    border-radius: 50%;
+
+    background: #1a171f;
+    color: var(--texto);
+
+    cursor: pointer;
+
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+.emblema-fairy-tail {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.btn-menu-rapido:hover {
+    background: #29151d;
+    border-color: #a52b43;
+    box-shadow: 0 0 14px rgba(190, 25, 55, 0.18);
+    transform: scale(1.04);
+}
+
+.btn-menu-rapido:active {
+    transform: scale(0.95);
+}
+
+.btn-menu-rapido[aria-expanded="true"] {
+    background: #29151d;
+    border-color: #a52b43;
+    box-shadow: 0 0 12px rgba(190, 25, 55, 0.16);
+}
+
+/* Painel do menu rápido */
+
+.menu-rapido {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 12px);
+    z-index: 50;
+
+    width: 190px;
+    padding: 6px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    border: 1px solid #37303b;
+    border-radius: 15px;
+
+    background: #111015;
+    box-shadow:
+        0 14px 40px rgba(0, 0, 0, 0.48),
+        0 0 18px rgba(139, 0, 0, 0.08);
+
+    transform-origin: bottom left;
+    animation: abrir-menu-pyxie 0.16s ease-out;
+}
+
+.menu-rapido[hidden] {
+    display: none !important;
+}
+
+@keyframes abrir-menu-pyxie {
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Opções individuais */
+
+.menu-rapido-item {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    border: 1px solid transparent;
+    border-radius: 9px;
+
+    background: transparent;
+    color: #e8e4eb;
+
+    font-size: 14px;
+    text-align: left;
+
+    cursor: pointer;
+
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+}
+
+.menu-rapido-item > span:first-child {
+    width: 22px;
+    flex-shrink: 0;
+    text-align: center;
+    font-size: 17px;
+}
+
+.menu-rapido-item:hover {
+    background: #21161d;
+    border-color: #43202b;
+    color: #ffffff;
+}
+
+.menu-rapido-item:active {
+    background: #32141e;
+}
+
+/* Campo de mensagem */
+
+.input-box textarea {
+    align-self: center;
+    padding: 9px 5px;
+    min-height: 40px;
+    line-height: 22px;
+}
+
+.input-box textarea::placeholder {
+    color: #85818c;
+}
+
+/* Botão de envio */
+
+#enviar {
+    width: 42px;
+    height: 42px;
+
+    background: #9c1028;
+
+    transition:
+        background 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.15s ease;
+}
+
+#enviar:hover {
+    background: #bd1936;
+    box-shadow: 0 0 14px rgba(189, 25, 54, 0.22);
+}
+
+/* Controles originais: continuam acessíveis ao JavaScript */
+
+.btn-input[hidden] {
+    display: none !important;
+}
+
+/* Compatibilidade com celular */
+
+@media (max-width: 520px) {
+    .chat-input {
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+
+    .input-box {
+        gap: 6px;
+        padding: 6px;
+        border-radius: 24px;
+    }
+
+    .btn-menu-rapido,
+    #enviar {
+        width: 40px;
+        height: 40px;
+    }
+
+    .menu-rapido {
+        width: 180px;
+    }
+
+    .input-box textarea {
+        font-size: 16px;
+    }
+}
+
+/* Respeita a preferência por movimento reduzido */
+
+@media (prefers-reduced-motion: reduce) {
+    .btn-menu-rapido,
+    .menu-rapido-item,
+    #enviar,
+    .input-box {
+        transition: none;
+    }
+
+    .menu-rapido {
+        animation: none;
+    }
+}
+
+
+/* ========================================
+   PYXIE 4.3 — REFINAMENTO DA BARRA DE MENSAGEM
+======================================== */
+
+/* Mantém a barra acima dos elementos de fundo */
+.chat-input {
+    position: relative;
+    z-index: 5;
+}
+
+/* Barra mais uniforme e fluida */
+.input-box {
+    width: 100%;
+    min-width: 0;
+    gap: 9px;
+
+    border-color: #34303a;
+    background: rgba(17, 16, 22, 0.97);
+
+    box-shadow:
+        0 8px 28px rgba(0, 0, 0, 0.24),
+        0 1px 0 rgba(255, 255, 255, 0.015) inset;
+}
+
+/* Destaque ao digitar */
+.input-box:focus-within {
+    border-color: #8d293d;
+
+    box-shadow:
+        0 0 0 3px rgba(139, 0, 0, 0.12),
+        0 8px 28px rgba(0, 0, 0, 0.28),
+        0 1px 0 rgba(255, 255, 255, 0.02) inset;
+}
+
+/* Campo de texto */
+.input-box textarea {
+    min-width: 0;
+    min-height: 40px;
+    max-height: 200px;
+
+    padding: 9px 5px;
+
+    line-height: 22px;
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    scrollbar-width: thin;
+    scrollbar-color: #48404b transparent;
+}
+
+.input-box textarea:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+/* Emblema da Fairy Tail */
+.menu-rapido-container {
+    z-index: 6;
+}
+
+.btn-menu-rapido {
+    flex-shrink: 0;
+    outline-offset: 3px;
+}
+
+.btn-menu-rapido:focus-visible {
+    outline: 2px solid #d14b4b;
+    outline-offset: 3px;
+}
+
+/* Emblema da Fairy Tail — correção definitiva */
+.btn-menu-rapido .emblema-fairy-tail {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    flex-shrink: 0;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* Menu: limita a altura e permite rolagem se necessário */
+.menu-rapido {
+    width: min(210px, calc(100vw - 32px));
+    max-height: min(320px, 60vh);
+    max-height: min(320px, 60dvh);
+
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #48404b transparent;
+}
+
+/* Opções do menu */
+.menu-rapido-item {
+    flex-shrink: 0;
+    min-height: 46px;
+}
+
+.menu-rapido-item:focus-visible {
+    outline: 2px solid #d14b4b;
+    outline-offset: -2px;
+}
+
+/* Botão de envio */
+#enviar {
+    flex-shrink: 0;
+    align-self: flex-end;
+}
+
+#enviar:focus-visible {
+    outline: 2px solid #f08090;
+    outline-offset: 3px;
+}
+
+/* Evita que os controles encolham durante a digitação */
+.btn-menu-rapido,
+#enviar {
+    flex-shrink: 0;
+}
+
+/* Ajustes para telas estreitas */
+@media (max-width: 520px) {
+    .chat-input {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .input-box {
+        gap: 6px;
+    }
+
+    .menu-rapido {
+        width: min(190px, calc(100vw - 24px));
+    }
+}
+
+/* Acessibilidade: respeita a preferência por menos movimento */
+@media (prefers-reduced-motion: reduce) {
+    .btn-menu-rapido,
+    .menu-rapido-item,
+    #enviar,
+    .input-box {
+        transition: none;
+    }
+
+    .menu-rapido {
+        animation: none;
+    }
+}

@@ -10,8 +10,7 @@ import os
 
 from core.usage import registrar_headers
 from core.prompt import montar_prompt as _montar_prompt
-from core.llm_erros import ErroLLM, ErroCota, ErroIndisponivel
-
+from core.llm_erros import ErroLLM, ErroCota, ErroIndisponivel, ErroEntradaGrande
 load_dotenv()
 
 GROQ_MODEL = "openai/gpt-oss-120b"
@@ -41,6 +40,11 @@ def traduzir_erro_groq(e: Exception) -> ErroLLM:
     if isinstance(e, RateLimitError):
         return ErroCota("groq", detalhe, espera_s=_espera_do_erro(e))
 
+    # 413: o pedido passa do limite de tokens do modelo/plano.
+    # O SDK não tem classe própria para esse código; lê-se o status.
+    if getattr(e, "status_code", None) == 413:
+        return ErroEntradaGrande("groq", detalhe)
+
     if isinstance(
         e, (APITimeoutError, APIConnectionError, InternalServerError)
     ):
@@ -58,17 +62,23 @@ def _montar_mensagens(comando: str, memoria: str) -> list:
     ]
 
 
-def perguntar_groq(comando: str, memoria: str = "") -> str:
+def perguntar_groq(comando: str, memoria: str = "", busca: bool = True) -> str:
     """
+    busca=False desliga a ferramenta browser_search (usado em pedidos
+    grandes, para economizar tokens).
     Em caso de falha levanta ErroCota, ErroIndisponivel ou ErroLLM.
     """
     try:
-        raw = client.chat.completions.with_raw_response.create(
-            model=GROQ_MODEL,
-            messages=_montar_mensagens(comando, memoria),
-            tools=[{"type": "browser_search"}],
-            tool_choice="auto"
-        )
+        argumentos = {
+            "model": GROQ_MODEL,
+            "messages": _montar_mensagens(comando, memoria),
+        }
+
+        if busca:
+            argumentos["tools"] = [{"type": "browser_search"}]
+            argumentos["tool_choice"] = "auto"
+
+        raw = client.chat.completions.with_raw_response.create(**argumentos)
 
         try:
             registrar_headers(raw.headers, GROQ_MODEL)

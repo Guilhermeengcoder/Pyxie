@@ -27,8 +27,29 @@ class ErroIndisponivel(ErroLLM):
     """Provedor fora do ar: timeout, sem conexão ou erro 5xx."""
 
 
+class ErroEntradaGrande(ErroLLM):
+    """Pedido maior que o limite do provedor (HTTP 413).
+
+    Não é cota: esperar não resolve, então o provedor NÃO é pausado.
+    """
+
+
+class ErroSegredo(ErroLLM):
+    """O conteúdo parece ter senha ou chave e não pode ir a este provedor."""
+
+
 def mensagem_de_erro_llm(erro) -> str:
     """Texto curto e honesto para mostrar ao usuário."""
+    if isinstance(erro, ErroSegredo):
+        return (
+            "Encontrei algo que parece uma senha ou chave de acesso no conteúdo "
+            "e não o enviei ao modelo reserva. Remova esse trecho e tente de novo."
+        )
+    if isinstance(erro, ErroEntradaGrande):
+        return (
+            "Esse conteúdo é grande demais para o modelo agora. "
+            "Tente enviar uma parte menor."
+        )
     if isinstance(erro, ErroCota):
         return "Atingi o limite de uso do modelo agora. Tente de novo em alguns instantes."
     if isinstance(erro, ErroIndisponivel):

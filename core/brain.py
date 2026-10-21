@@ -205,6 +205,10 @@ def perguntar_llm_seguro(pergunta, contexto):
 
 LIMITE_MEMORIA_FIXA = 8000
 
+# Histórico máximo (em caracteres) quando a mensagem é código/texto
+# extenso: o Groq gratuito aceita poucos tokens por pedido.
+LIMITE_HISTORICO_EXTENSO = 3000
+
 
 def memoria_fixa_relevante(
     dados: dict, mensagem: str = "", limite: int = LIMITE_MEMORIA_FIXA
@@ -411,19 +415,33 @@ class Brain:
         contexto_stm = sessao.stm.get_context_seletivo()
         contexto_extra = sessao.context.get_entity() or ""
 
-        contexto_historico = ""
+        linhas_historico = []
         for m in contexto_stm:
             if m["role"] == "system":
-                contexto_historico += m["content"] + "\n\n"
+                linhas_historico.append(m["content"] + "\n\n")
             elif m["role"] == "user":
-                contexto_historico += f"Usuário: {m['content']}\n"
+                linhas_historico.append(f"Usuário: {m['content']}\n")
             elif m["role"] == "assistant":
-                contexto_historico += f"PYXIE: {m['content']}\n"
+                linhas_historico.append(f"PYXIE: {m['content']}\n")
 
-        # Memória fixa só é carregada (nem vai ao Redis) quando o provedor
-        # ativo é de confiança. O llm.py repete essa checagem.
+        # Conteúdo extenso: histórico curto, só as mensagens mais recentes
+        # (cada mensagem entra inteira ou não entra).
+        if extenso:
+            escolhidas, total = [], 0
+            for linha in reversed(linhas_historico):
+                total += len(linha)
+                if total > LIMITE_HISTORICO_EXTENSO:
+                    break
+                escolhidas.append(linha)
+            linhas_historico = list(reversed(escolhidas))
+
+        contexto_historico = "".join(linhas_historico)
+
+        # Memória fixa: só com provedor de confiança e nunca em conteúdo
+        # extenso (economiza tokens e evita expor a memória em pedidos
+        # grandes). O llm.py repete a checagem de confiança.
         memoria_fixa_txt = ""
-        if provedor_confiavel():
+        if provedor_confiavel() and not extenso:
             contexto_memoria_fixa = memoria_fixa_relevante(
                 self.memoria_fixa, original_message
             )
@@ -444,6 +462,7 @@ class Brain:
                 mensagem_para_ia,
                 contexto_final,
                 memoria_fixa=memoria_fixa_txt,
+                leve=extenso,
             )
         except Exception as erro:
             print(f"[ERRO LLM no fallback]: {erro}")
@@ -456,6 +475,7 @@ class Brain:
             sessao.regeneracao_pergunta = mensagem_para_ia
             sessao.regeneracao_contexto = contexto_final
             sessao.regeneracao_memoria_fixa = memoria_fixa_txt
+            sessao.regeneracao_leve = extenso
             self._finalizar(sessao, mensagem_original, resposta_final)
             return resposta_final
 
@@ -819,12 +839,13 @@ class Brain:
                 }
 
             try:
-                response = perguntar_llm(
+                                response = perguntar_llm(
                     pergunta,
                     contexto,
                     memoria_fixa=getattr(
                         sessao, "regeneracao_memoria_fixa", ""
                     ),
+                    leve=getattr(sessao, "regeneracao_leve", False),
                 )
                 
             except Exception as erro:

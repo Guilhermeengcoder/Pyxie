@@ -2,7 +2,14 @@ import importlib
 import threading
 
 from core import llm_config
-from core.llm_erros import ErroLLM, ErroCota, ErroIndisponivel
+from core.filtro_segredos import detectar_segredos
+from core.llm_erros import (
+    ErroLLM,
+    ErroCota,
+    ErroIndisponivel,
+    ErroEntradaGrande,
+    ErroSegredo,
+)
 
 
 # Só estes provedores podem receber a memória fixa (JSON do Redis)
@@ -62,11 +69,12 @@ def aviso_da_requisicao():
 # a falta de uma chave (ex.: GEMINI_API_KEY) não derruba o app.
 # Para um novo provedor, acrescente uma entrada aqui.
 _PROVEDORES = {
-    "groq": {
+        "groq": {
         "modulo": "modules.groq_ai",
         "texto": "perguntar_groq",
         "modulo_imagem": "modules.groq_vision",
         "imagem": "perguntar_groq_imagem",
+        "sem_busca": True,
     },
     "gemini": {
         "modulo": "modules.gemini_ai",
@@ -124,7 +132,7 @@ def _carregar(nome: str, modulo_chave: str, funcao_chave: str):
 
 
 def perguntar_llm_detalhado(
-    pergunta, contexto, memoria_fixa="", sensivel=False
+    pergunta, contexto, memoria_fixa="", sensivel=False, leve=False
 ):
     """
     Devolve (texto, provedor_usado).
@@ -133,6 +141,11 @@ def perguntar_llm_detalhado(
     memoria_fixa -> memória do Redis (só vai a provedor de confiança)
     sensivel     -> a pergunta contém dados da memória (edição);
                     só provedores de confiança são candidatos
+    leve         -> pedido grande: desliga a busca na web nos
+                    provedores que têm essa opção (hoje, o Groq)
+
+    Antes de enviar a um provedor sem confiança, o texto passa pelo
+    filtro de segredos; se achar algo, levanta ErroSegredo.
     """
     modo = llm_config.obter_modo()
     ordem = _ordem(modo)
@@ -157,14 +170,31 @@ def perguntar_llm_detalhado(
         if nome in PROVEDORES_CONFIAVEIS and memoria_fixa:
             ctx = (memoria_fixa + "\n\n" + contexto).strip()
 
+        # Provedor sem confiança: nada que pareça senha ou chave sai daqui.
+        if nome not in PROVEDORES_CONFIAVEIS:
+            achados = detectar_segredos(f"{pergunta}\n{contexto}")
+            if achados:
+                raise ErroSegredo(
+                    nome, "possível segredo: " + ", ".join(achados)
+                )
+
+        extras = {}
+        if leve and _PROVEDORES.get(nome, {}).get("sem_busca"):
+            extras["busca"] = False
+
         try:
             funcao = _carregar(nome, "modulo", "texto")
-            texto = funcao(pergunta, ctx)
+            texto = funcao(pergunta, ctx, **extras)
             _registrar_uso(nome)
             return texto, nome
 
         except (ErroCota, ErroIndisponivel) as erro:
             llm_config.pausar(nome, erro)
+            primeiro_erro = primeiro_erro or erro
+
+        except ErroEntradaGrande as erro:
+            # Pedido maior que o limite deste provedor: não é cota,
+            # então não pausa. No Auto, segue para o próximo.
             primeiro_erro = primeiro_erro or erro
 
         except ErroLLM:
@@ -175,9 +205,15 @@ def perguntar_llm_detalhado(
     raise primeiro_erro
 
 
-def perguntar_llm(pergunta, contexto, memoria_fixa="", sensivel=False):
+def perguntar_llm(
+    pergunta, contexto, memoria_fixa="", sensivel=False, leve=False
+):
     texto, _ = perguntar_llm_detalhado(
-        pergunta, contexto, memoria_fixa=memoria_fixa, sensivel=sensivel
+        pergunta,
+        contexto,
+        memoria_fixa=memoria_fixa,
+        sensivel=sensivel,
+        leve=leve,
     )
     return texto
 

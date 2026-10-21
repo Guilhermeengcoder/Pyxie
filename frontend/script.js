@@ -2872,6 +2872,103 @@ botaoMenu.addEventListener("click", alternarSidebar);
 
 overlay.addEventListener("click", fecharSidebarNoCelular);
 
+// ========================================
+// SELETOR DE MODO (GROQ / GEMINI / AUTO)
+// ========================================
+
+const botoesModo = document.querySelectorAll(".modo-btn");
+const elModoDescricao = document.getElementById("modo-descricao");
+
+const DESCRICAO_MODO = {
+    groq: "Groq: usa a memória fixa da PYXIE.",
+    gemini:
+        "Gemini: não recebe a memória fixa, mas recebe o histórico da conversa. " +
+        "Evite assuntos pessoais.",
+    auto:
+        "Auto: começa pelo Groq e, se ele falhar, usa o Gemini " +
+        "(sem a memória fixa)."
+};
+
+let modoAtual = null;
+let trocandoModo = false;
+
+function marcarModo(modo) {
+    modoAtual = modo;
+
+    botoesModo.forEach(b => {
+        const ativo = b.dataset.modo === modo;
+
+        b.setAttribute("aria-checked", ativo ? "true" : "false");
+        b.tabIndex = ativo ? 0 : -1;
+    });
+
+    if (elModoDescricao) {
+        elModoDescricao.textContent = DESCRICAO_MODO[modo] || "";
+    }
+}
+
+async function carregarModo() {
+    try {
+        const resposta = await fetch("/modo");
+
+        if (!resposta.ok) return;
+
+        const dados = await resposta.json();
+
+        if (dados && dados.modo) {
+            marcarModo(dados.modo);
+        }
+    } catch (erro) {
+        console.warn("Não foi possível carregar o modo:", erro);
+    }
+}
+
+async function trocarModo(novo) {
+    if (trocandoModo || novo === modoAtual) return;
+
+    const anterior = modoAtual;
+
+    trocandoModo = true;
+    botoesModo.forEach(b => { b.disabled = true; });
+
+    // Mostra a escolha já, e desfaz se o servidor recusar.
+    marcarModo(novo);
+
+    try {
+        const resposta = await fetch("/modo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ modo: novo })
+        });
+
+        if (!resposta.ok) {
+            throw new Error(`Erro HTTP: ${resposta.status}`);
+        }
+
+        const dados = await resposta.json();
+
+        marcarModo(dados.modo);
+
+        // O painel passa a mostrar o uso do provedor escolhido.
+        await carregarUsoInicial();
+    } catch (erro) {
+        console.error("Erro ao trocar o modo:", erro);
+
+        if (anterior) {
+            marcarModo(anterior);
+        }
+
+        mostrarAviso("Não consegui trocar o modo. Tente de novo.");
+    } finally {
+        trocandoModo = false;
+        botoesModo.forEach(b => { b.disabled = false; });
+    }
+}
+
+botoesModo.forEach(b => {
+    b.addEventListener("click", () => trocarModo(b.dataset.modo));
+});
+
 
 // ========================================
 // INICIALIZAÇÃO
@@ -2894,3 +2991,69 @@ fecharSidebarNoCelular();
 
 // Mostra alguma coisa no painel de uso antes da primeira mensagem.
 carregarUsoInicial();
+
+// Marca no seletor o modo que o servidor está usando.
+carregarModo();
+
+
+/* ========================================
+   PYXIE 4.3 — COMPORTAMENTO DO MENU RÁPIDO
+======================================== */
+
+(() => {
+    const botaoMenu = document.getElementById("menu-rapido-toggle");
+    const menuRapido = document.getElementById("menu-rapido");
+    const containerMenu = document.querySelector(".menu-rapido-container");
+
+    if (!botaoMenu || !menuRapido || !containerMenu) {
+        return;
+    }
+
+    const opcoesMenu = menuRapido.querySelectorAll(".menu-rapido-item");
+
+    function definirMenuAberto(aberto) {
+        menuRapido.hidden = !aberto;
+        botaoMenu.setAttribute("aria-expanded", String(aberto));
+
+        botaoMenu.setAttribute(
+            "aria-label",
+            aberto ? "Fechar menu rápido" : "Abrir menu rápido"
+        );
+    }
+
+    function alternarMenu() {
+        definirMenuAberto(menuRapido.hidden);
+    }
+
+    // Abre ou fecha pelo emblema da Fairy Tail.
+    botaoMenu.addEventListener("click", alternarMenu);
+
+    // Fecha ao clicar fora do menu e do botão.
+    document.addEventListener("click", (evento) => {
+        if (
+            !menuRapido.hidden &&
+            !containerMenu.contains(evento.target)
+        ) {
+            definirMenuAberto(false);
+        }
+    });
+
+    // Fecha com Escape e devolve o foco ao botão.
+    document.addEventListener("keydown", (evento) => {
+        if (evento.key === "Escape" && !menuRapido.hidden) {
+            definirMenuAberto(false);
+            botaoMenu.focus();
+        }
+    });
+
+    // Fecha após selecionar Arquivos, Câmera ou Voz.
+    // Os onclick existentes dessas opções são preservados.
+    opcoesMenu.forEach((opcao) => {
+        opcao.addEventListener("click", () => {
+            definirMenuAberto(false);
+        });
+    });
+
+    // Mantém o estado inicial sincronizado com o HTML.
+    definirMenuAberto(!menuRapido.hidden);
+})();
