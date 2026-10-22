@@ -333,7 +333,7 @@ function apagarConversa(id) {
     renderizarLista();
 }
 
-function registrarMensagem(conversa, tipo, texto, miniatura) {
+function registrarMensagem(conversa, tipo, texto, miniatura, imagemId) {
     const registro = {
         tipo: tipo,
         texto: texto
@@ -341,6 +341,10 @@ function registrarMensagem(conversa, tipo, texto, miniatura) {
 
     if (miniatura) {
         registro.miniatura = miniatura;
+    }
+
+    if (imagemId) {
+        registro.imagemId = imagemId;
     }
 
     conversa.mensagens.push(registro);
@@ -1082,6 +1086,31 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
         const textoMensagem = document.createElement("div");
         textoMensagem.classList.add("conteudo-resposta");
 
+        if (opcoes.imagemId) {
+            const figura = document.createElement("img");
+            figura.classList.add("imagem-gerada");
+            figura.alt = "Imagem gerada pela PYXIE";
+
+            apiFetch(`/imagens/${encodeURIComponent(opcoes.imagemId)}`)
+                .then(r => {
+                    if (!r.ok) throw new Error(r.status);
+                    return r.blob();
+                })
+                .then(blob => {
+                    figura.src = URL.createObjectURL(blob);
+                    figura.addEventListener("load", rolarParaOFim);
+                })
+                .catch(() => {
+                    figura.remove();
+                    const aviso404 = document.createElement("div");
+                    aviso404.classList.add("texto-resposta");
+                    aviso404.textContent = "(a imagem não está mais disponível)";
+                    textoMensagem.appendChild(aviso404);
+                });
+
+            textoMensagem.appendChild(figura);
+        }
+
         renderizarTextoComCodigo(texto, textoMensagem);
 
         // Ações abaixo da resposta
@@ -1274,11 +1303,13 @@ function renderizarMensagens() {
         const permitirRegenerar =
             ehUltimaMensagem &&
             m.tipo === "pyxie" &&
+            !m.imagemId &&
             temPerguntaAnterior;
 
         desenharMensagem(m.texto, m.tipo, m.miniatura, {
             permitirRegenerar: permitirRegenerar,
-            conversaId: m.tipo === "pyxie" ? conversa.id : null
+            conversaId: m.tipo === "pyxie" ? conversa.id : null,
+            imagemId: m.imagemId || null
         });
     });
 
@@ -1330,6 +1361,8 @@ async function regenerarResposta(conversaId) {
 
     pendenteId = conversa.id;
     definirCarregando(true);
+
+    carregarUsoServicos();
 
     if (estado.ativa === conversa.id) {
         criarIndicador();
@@ -2206,6 +2239,7 @@ async function enviarMensagem() {
 
     let respostaTexto = null;
     let deuErro = false;
+    let imagemIdResposta = null;   // declare junto de respostaTexto/deuErro
 
     try {
         const resposta = await apiFetch("/perguntar", {
@@ -2232,9 +2266,11 @@ async function enviarMensagem() {
         }
 
         respostaTexto = dados.resposta;
+        imagemIdResposta = dados.imagem_id || null;
 
         if (dados.uso) {
             atualizarPainelUso(dados.uso);
+            carregarUsoServicos();
         }
 
         if (dados.aviso) {
@@ -2269,7 +2305,7 @@ async function enviarMensagem() {
             );
         }
     } else if (aindaExiste) {
-        registrarMensagem(conversa, "pyxie", respostaTexto);
+        registrarMensagem(conversa, "pyxie", respostaTexto, null, imagemIdResposta);
 
         if (visivel) {
             // Redesenha para habilitar o botão de regeneração na última resposta.
@@ -2588,8 +2624,11 @@ function atualizarPainelUso(uso) {
         pararContagemResetGroq();
         pararContagemResetGemini();
 
-        if (elVazio) elVazio.hidden = false;
-        if (elConteudo) elConteudo.hidden = true;
+        // Sem dados do Groq ainda: mostra só os serviços externos.
+        if (elVazio) elVazio.hidden = true;
+        if (elConteudo) elConteudo.hidden = false;
+        if (elGrupoGroq) elGrupoGroq.hidden = true;
+        if (elGrupoGemini) elGrupoGemini.hidden = true;
         return;
     }
 
@@ -2618,6 +2657,8 @@ async function carregarUsoInicial() {
         const dados = await resposta.json();
 
         atualizarPainelUso(dados);
+        carregarUsoServicos();
+
     } catch (erro) {
         console.warn("Não foi possível carregar o uso inicial:", erro);
     }
@@ -2629,6 +2670,82 @@ if (botaoUso) {
 
 if (overlayUso) {
     overlayUso.addEventListener("click", fecharPainelUsoNoCelular);
+}
+
+// ----- Serviços externos: Tavily, Firecrawl, Cloudflare -----
+
+function preencherServico(prefixo, dados, rotuloUnidade) {
+    const elTexto = document.getElementById(`uso-${prefixo}-texto`);
+    const elBarra = document.getElementById(`uso-${prefixo}-barra`);
+
+    if (!dados || !elTexto) return;
+
+    const temLimite = Number.isFinite(dados.limite) && dados.limite > 0;
+
+    // Com limite: "usadas / limite" e barra do que resta.
+    // Sem limite: só o número usado, e a barra fica vazia.
+    elTexto.textContent = temLimite
+        ? formatarNumero(dados.usadas) + " / " + formatarNumero(dados.limite)
+        : formatarNumero(dados.usadas) + " " + rotuloUnidade;
+
+    if (elBarra) {
+        const fundo = elBarra.parentElement;
+        if (fundo) fundo.hidden = !temLimite;
+
+        if (temLimite) {
+            atualizarBarra(elBarra, dados.restantes, dados.limite);
+        }
+    }
+}
+
+function atualizarServicos(todos) {
+    if (!todos) return;
+
+    preencherServico("tav", todos.tavily, "créditos");
+    preencherServico("fc", todos.firecrawl, "créditos");
+    preencherServico("cf", todos.cloudflare, "neurônios");
+
+    const elTavReset = document.getElementById("uso-tav-reset");
+    if (elTavReset && todos.tavily) {
+        elTavReset.textContent = Number.isFinite(todos.tavily.reset_s)
+            ? formatarResetDiario(todos.tavily.reset_s)
+            : "";
+    }
+
+    // Imagens: o que importa é quantas foram geradas, não os neurônios.
+    const cf = todos.cloudflare;
+    const elCfTexto = document.getElementById("uso-cf-texto");
+    const elCfLegenda = document.getElementById("uso-cf-legenda");
+
+    if (cf && elCfTexto) {
+        elCfTexto.textContent = formatarNumero(cf.pedidos) + " geradas";
+    }
+
+    if (cf && elCfLegenda) {
+        const partes = [];
+
+        if (cf.usadas > 0) {
+            partes.push(formatarNumero(cf.usadas) + " neurônios (estimado)");
+        }
+
+        if (Number.isFinite(cf.reset_s)) {
+            partes.push(formatarResetDiario(cf.reset_s));
+        }
+
+        elCfLegenda.textContent = partes.join(" · ");
+    }
+}
+
+async function carregarUsoServicos() {
+    try {
+        const resposta = await apiFetch("/uso/servicos");
+
+        if (!resposta.ok) return;
+
+        atualizarServicos(await resposta.json());
+    } catch (erro) {
+        console.warn("Não foi possível carregar o uso dos serviços:", erro);
+    }
 }
 
 

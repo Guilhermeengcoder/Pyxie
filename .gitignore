@@ -12,3 +12,5 @@ data/*.bak
 data/stm/
 memory.json
 memory.json.bak
+data/servicos_uso.json
+data/imagens/

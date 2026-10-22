@@ -2100,3 +2100,22 @@ hr {
         animation: none;
     }
 }
+
+.conteudo-resposta .imagem-gerada {
+    display: block;
+    max-width: min(100%, 512px);
+    margin-top: 12px;
+    border: 1px solid var(--borda);
+    border-radius: 12px;
+}
+
+.uso-servicos {
+    margin-top: 20px;
+    padding-top: 16px;
+
+    border-top: 1px solid var(--borda);
+}
+
+.uso-barra-fundo[hidden] {
+    display: none;
+}

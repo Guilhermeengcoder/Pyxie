@@ -5,6 +5,8 @@ from typing import List, Literal, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException
 
 
+from fastapi.responses import FileResponse
+from core import cloudflare_imagem
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from core.brain import brain
@@ -12,6 +14,7 @@ from core import usage
 from core import usage_gemini
 from core import llm
 from core import llm_config
+from core import usage_servicos
 
 # Sem /docs nem /openapi.json públicos: não mostram o mapa da API a estranhos.
 app = FastAPI(
@@ -86,6 +89,9 @@ def _uso_atual() -> dict:
 def perguntar(pergunta: Pergunta):
 
     llm.iniciar_rastreio()
+    
+    sessao = brain.sessions.get(pergunta.chat_id)
+    sessao.imagem_pendente = None
 
     if pergunta.imagem:
         if (
@@ -106,8 +112,12 @@ def perguntar(pergunta: Pergunta):
     else:
         resposta = brain.process(pergunta.mensagem, chat_id=pergunta.chat_id)
 
+    imagem_id = sessao.imagem_pendente
+    sessao.imagem_pendente = None
+
     return {
         "resposta": resposta,
+        "imagem_id": imagem_id,
         "uso": _uso_atual(),
         "aviso": llm.aviso_da_requisicao(),
     }
@@ -158,6 +168,17 @@ def trocar_modo(novo: NovoModo):
     llm_config.definir_modo(novo.modo)
     return {"modo": llm_config.obter_modo(), "modos": list(llm_config.MODOS)}
 
+
+@app.get("/uso/servicos", dependencies=[Depends(exigir_token)])
+def uso_servicos():
+    return usage_servicos.obter_todos()
+
+@app.get("/imagens/{imagem_id}", dependencies=[Depends(exigir_token)])
+def ver_imagem(imagem_id: str):
+    caminho = cloudflare_imagem.caminho_da_imagem(imagem_id)
+    if not caminho:
+        raise HTTPException(status_code=404, detail="Imagem não encontrada.")
+    return FileResponse(caminho)
 
 app.mount(
     "/",

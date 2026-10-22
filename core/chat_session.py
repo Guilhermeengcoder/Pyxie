@@ -15,6 +15,7 @@ class ChatSession:
         self.context_anterior = None
         self.ultima_pergunta = None
         self.last_used = time.time()
+        self.imagem_pendente = None   # id da imagem gerada nesta resposta
         
         # Dados necessários para regenerar uma resposta da IA.
         self.regeneracao_pergunta = None
