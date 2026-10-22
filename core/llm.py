@@ -25,6 +25,10 @@ AVISO_RESERVA = (
     "sem acesso à minha memória fixa."
 )
 
+AVISO_GEMINI_MANUAL = (
+    "Respondi pelo Gemini: sem acesso à minha memória fixa."
+)
+
 # Registro, por requisição, de quais provedores responderam.
 # A API chama iniciar_rastreio() no começo de cada pedido e lê
 # aviso_da_requisicao() no fim. Sem iniciar_rastreio() (ex.: um
@@ -109,9 +113,18 @@ def provedor_confiavel() -> bool:
 
 
 def aviso_do_provedor(nome: str):
-    """Texto de aviso quando a resposta veio de um provedor sem confiança."""
-    return None if nome in PROVEDORES_CONFIAVEIS else AVISO_RESERVA
+    """Texto de aviso quando a resposta veio de um provedor sem confiança.
 
+    No Auto é o modo reserva; no modo manual a escolha foi sua,
+    então a frase é neutra.
+    """
+    if nome in PROVEDORES_CONFIAVEIS:
+        return None
+
+    if llm_config.obter_modo() == "auto":
+        return AVISO_RESERVA
+
+    return AVISO_GEMINI_MANUAL
 
 def _carregar(nome: str, modulo_chave: str, funcao_chave: str):
     """Importa o módulo do provedor só agora e devolve a função."""

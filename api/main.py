@@ -1,6 +1,10 @@
+import os
+import secrets
 from typing import List, Literal, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
+
+
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from core.brain import brain
@@ -9,7 +13,35 @@ from core import usage_gemini
 from core import llm
 from core import llm_config
 
-app = FastAPI(title="PYXIE API")
+# Sem /docs nem /openapi.json públicos: não mostram o mapa da API a estranhos.
+app = FastAPI(
+    title="PYXIE API",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
+
+
+def exigir_token(x_pyxie_token: Optional[str] = Header(default=None)):
+    """Exige o header X-Pyxie-Token igual a PYXIE_TOKEN.
+
+    O token é lido a cada chamada (não no import). Sem PYXIE_TOKEN no
+    servidor, tudo é recusado: melhor travado do que aberto por esquecimento.
+    """
+    esperado = (os.getenv("PYXIE_TOKEN") or "").strip()
+
+    if not esperado:
+        raise HTTPException(
+            status_code=503,
+            detail="PYXIE_TOKEN não configurado no servidor.",
+        )
+
+    enviado = (x_pyxie_token or "").strip()
+
+    # compare_digest evita vazar o token por tempo de resposta;
+    # encode() evita erro com caracteres não ASCII.
+    if not secrets.compare_digest(enviado.encode(), esperado.encode()):
+        raise HTTPException(status_code=401, detail="Token inválido ou ausente.")
 
 # ~4,5 MB de imagem em base64. O front-end já reduz a foto antes de enviar
 # (lado máximo de 1280px), então isso só protege contra abuso.
@@ -50,7 +82,7 @@ def _uso_atual() -> dict:
 # IMPORTANTE: estes endpoints são "def" (não "async def") de propósito.
 # O rastreio do provedor é por thread; a requisição inteira precisa
 # rodar na mesma thread.
-@app.post("/perguntar")
+@app.post("/perguntar", dependencies=[Depends(exigir_token)])
 def perguntar(pergunta: Pergunta):
 
     llm.iniciar_rastreio()
@@ -82,7 +114,7 @@ def perguntar(pergunta: Pergunta):
 
 
 
-@app.post("/regenerar/{chat_id}")
+@app.post("/regenerar/{chat_id}", dependencies=[Depends(exigir_token)])
 def regenerar_resposta(chat_id: str):
     llm.iniciar_rastreio()
 
@@ -102,13 +134,13 @@ def regenerar_resposta(chat_id: str):
 
 
 
-@app.delete("/chat/{chat_id}")
+@app.delete("/chat/{chat_id}", dependencies=[Depends(exigir_token)])
 def encerrar_chat(chat_id: str):
     brain.sessions.delete(chat_id)
     return {"ok": True}
 
 
-@app.get("/uso")
+@app.get("/uso", dependencies=[Depends(exigir_token)])
 def uso():
     return _uso_atual()
 
@@ -116,12 +148,12 @@ def uso():
 # ATENÇÃO: sem autenticação por enquanto (item 4 do roadmap de segurança).
 # Quem tiver a URL consegue trocar o modo. Trocar para o Gemini não vaza
 # memória (a trava do llm.py continua valendo), mas muda o comportamento.
-@app.get("/modo")
+@app.get("/modo", dependencies=[Depends(exigir_token)])
 def ler_modo():
     return {"modo": llm_config.obter_modo(), "modos": list(llm_config.MODOS)}
 
 
-@app.post("/modo")
+@app.post("/modo", dependencies=[Depends(exigir_token)])
 def trocar_modo(novo: NovoModo):
     llm_config.definir_modo(novo.modo)
     return {"modo": llm_config.obter_modo(), "modos": list(llm_config.MODOS)}

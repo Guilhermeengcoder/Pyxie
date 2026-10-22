@@ -17,6 +17,7 @@ import re
 import time
 from typing import Optional
 from dataclasses import dataclass, field
+import unicodedata
 
 
 # =============================================================
@@ -28,6 +29,36 @@ PASTA_STM = os.getenv("PYXIE_STM_DIR", "data/stm")
 # Teto de caracteres do histórico enviado ao LLM (o arquivo guarda tudo).
 # Use None para enviar tudo.
 LIMITE_CONTEXTO_CHARS = 20000
+
+# Janela reduzida para mensagens que se explicam sozinhas.
+LIMITE_CONTEXTO_AUTONOMA = 4000
+
+# Mensagens com menos palavras que isso dependem do histórico.
+MIN_PALAVRAS_AUTONOMA = 6
+
+_REFERENCIAS = re.compile(
+    r"\b(isso|isto|aquilo|ele|ela|eles|elas|dele|dela|disso|nisso|"
+    r"esse|essa|esses|essas|aquele|aquela|esse codigo|"
+    r"continua|continue|prossiga|segue|seguinte|anterior|acima|"
+    r"antes|de novo|outra vez|mesmo|tambem|alem disso|"
+    r"agora|entao|e se|e o|e a|sim|nao|ok)\b",
+    re.IGNORECASE,
+)
+
+
+def precisa_de_historico_completo(mensagem: str) -> bool:
+    """True se a mensagem provavelmente depende do que foi dito antes.
+
+    Na dúvida, devolve True (mandar mais contexto é o erro mais barato).
+    """
+    texto = (mensagem or "").strip().lower()
+    texto = unicodedata.normalize("NFD", texto)
+    texto = texto.encode("ascii", "ignore").decode("utf-8")
+
+    if len(texto.split()) < MIN_PALAVRAS_AUTONOMA:
+        return True
+
+    return bool(_REFERENCIAS.search(texto))
 
 
 def _caminho_stm(chat_id):
@@ -243,9 +274,11 @@ class ShortTermMemory:
 
     def get_context_seletivo(self, max_chars=None, excluir_ultima: bool = True) -> list[dict]:
         """
-        Retorna o histórico recente da conversa, respeitando o teto
-        LIMITE_CONTEXTO_CHARS (max_chars é aceito só por compatibilidade
-        e é ignorado).
+        Retorna o histórico recente da conversa, respeitando um teto de
+        caracteres. O teto depende da mensagem atual: se ela parece
+        depender do histórico, vale LIMITE_CONTEXTO_CHARS; se se explica
+        sozinha, vale LIMITE_CONTEXTO_AUTONOMA. (max_chars é aceito só
+        por compatibilidade e é ignorado.)
 
         excluir_ultima=True deixa de fora a mensagem atual do usuário,
         que já é enviada separadamente ao LLM.
@@ -253,6 +286,14 @@ class ShortTermMemory:
         msgs = self._messages[:-1] if excluir_ultima else self._messages
         limite = LIMITE_CONTEXTO_CHARS
 
+        if excluir_ultima and self._messages:
+            atual = self._messages[-1]
+            if (
+                atual.role == "user"
+                and limite is not None
+                and not precisa_de_historico_completo(atual.content)
+            ):
+                limite = min(limite, LIMITE_CONTEXTO_AUTONOMA)
         if limite is None:
             return [m.to_dict() for m in msgs]
 

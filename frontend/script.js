@@ -38,6 +38,48 @@ function gerarChatId() {
 
 let chatId = gerarChatId(); // reload da página = chat novo
 
+// ========================================
+// TOKEN DA API
+// ========================================
+
+const CHAVE_TOKEN = "pyxie_token";
+
+function obterToken() {
+    let token = "";
+
+    try {
+        token = localStorage.getItem(CHAVE_TOKEN) || "";
+    } catch (_) { }
+
+    if (!token) {
+        token = (prompt("Digite o token de acesso da PYXIE:") || "").trim();
+
+        if (token) {
+            try {
+                localStorage.setItem(CHAVE_TOKEN, token);
+            } catch (_) { }
+        }
+    }
+
+    return token;
+}
+
+// Igual ao fetch, mas envia o token. Em 401, apaga o token salvo
+// para pedir de novo na próxima chamada.
+async function apiFetch(url, opcoes = {}) {
+    const headers = new Headers(opcoes.headers || {});
+    headers.set("X-Pyxie-Token", obterToken());
+
+    const resposta = await fetch(url, { ...opcoes, headers });
+
+    if (resposta.status === 401) {
+        try {
+            localStorage.removeItem(CHAVE_TOKEN);
+        } catch (_) { }
+    }
+
+    return resposta;
+}
 
 // ========================================
 // CONFIGURAÇÕES
@@ -267,7 +309,7 @@ function apagarConversa(id) {
         return;
     }
 
-    fetch(`/chat/${encodeURIComponent(id)}`, {
+    apiFetch(`/chat/${encodeURIComponent(id)}`, {
         method: "DELETE"
     }).catch(() => { });
 
@@ -1294,7 +1336,7 @@ async function regenerarResposta(conversaId) {
     }
 
     try {
-        const resposta = await fetch(
+        const resposta = await apiFetch(
             `/regenerar/${encodeURIComponent(conversa.id)}`,
             {
                 method: "POST"
@@ -2166,7 +2208,7 @@ async function enviarMensagem() {
     let deuErro = false;
 
     try {
-        const resposta = await fetch("/perguntar", {
+        const resposta = await apiFetch("/perguntar", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -2569,7 +2611,7 @@ function atualizarPainelUso(uso) {
 
 async function carregarUsoInicial() {
     try {
-        const resposta = await fetch("/uso");
+        const resposta = await apiFetch("/uso");
 
         if (!resposta.ok) return;
 
@@ -2995,7 +3037,7 @@ botaoLimpar.addEventListener("click", () => {
     }
 
     estado.conversas.forEach(c =>
-        fetch(`/chat/${encodeURIComponent(c.id)}`, {
+        apiFetch(`/chat/${encodeURIComponent(c.id)}`, {
             method: "DELETE"
         }).catch(() => { })
     );
@@ -3050,7 +3092,7 @@ function marcarModo(modo) {
 
 async function carregarModo() {
     try {
-        const resposta = await fetch("/modo");
+        const resposta = await apiFetch("/modo");
 
         if (!resposta.ok) return;
 
@@ -3076,7 +3118,7 @@ async function trocarModo(novo) {
     marcarModo(novo);
 
     try {
-        const resposta = await fetch("/modo", {
+        const resposta = await apiFetch("/modo", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ modo: novo })

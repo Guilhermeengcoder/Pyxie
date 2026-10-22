@@ -23,6 +23,19 @@ IGNORAR = {
     "groq_uso.py",
 }
 
+# Módulos que controlam o computador local (abrir programas, volume,
+# brilho). Não carregam na nuvem. Desativa se PYXIE_SEM_CONTROLE_LOCAL=1
+# ou se estiver no Render (que define a variável RENDER sozinho),
+# assim um esquecimento de configuração não deixa o controle ligado.
+MODULOS_LOCAIS = {"launcher.py", "system_control.py"}
+
+
+def _sem_controle_local() -> bool:
+    return (
+        os.getenv("PYXIE_SEM_CONTROLE_LOCAL", "").strip() == "1"
+        or bool(os.getenv("RENDER"))
+    )
+
 
 def carregar_modulos() -> dict:
     global _cache
@@ -42,6 +55,26 @@ def carregar_modulos() -> dict:
 
     for arquivo in os.listdir(pasta_modulos):
         if not arquivo.endswith(".py") or arquivo in IGNORAR:
+            continue
+
+        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
+            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
+            continue
+
+        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
+            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
+            continue
+
+        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
+            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
+            continue
+
+        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
+            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
+            continue
+
+        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
+            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
             continue
 
         nome_modulo = arquivo[:-3]
@@ -86,6 +119,3 @@ def recarregar_modulos() -> dict:
     global _cache
     _cache = None
     return carregar_modulos()
-
-IGNORAR = {"__init__.py", "gemini_ai.py", "groq_ai.py",
-           "groq_vision.py", "ollama_ai.py", "groq_uso.py"}
