@@ -20,6 +20,7 @@
 
     --largura-coluna: 760px;
     --largura-sidebar: 270px;
+    --largura-painel-uso: 300px;
 }
 
 
@@ -82,21 +83,28 @@ button {
     isolation: isolate;
 }
 
+
 /* ================================
-   SIDEBAR (HISTÓRICO)
+   SIDEBAR — VISUAL REFINADO
 ================================ */
 
 .sidebar {
     flex-shrink: 0;
-
     width: var(--largura-sidebar);
     height: 100%;
 
     display: flex;
     flex-direction: column;
 
-    background: var(--bg);
-    border-right: 1px solid var(--borda);
+    background:
+        radial-gradient(
+            ellipse at top left,
+            rgba(75, 12, 30, 0.10),
+            transparent 55%
+        ),
+        #050505;
+
+    border-right: 1px solid #29232d;
 
     transition: margin-left 0.25s ease;
 }
@@ -106,8 +114,163 @@ body.sidebar-fechada .sidebar {
 }
 
 .sidebar-topo {
-    padding: 14px 12px 8px;
+    padding: 18px 12px 12px;
 }
+
+.botoes-sidebar {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+}
+
+.botoes-sidebar .btn-nova {
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-nova {
+    min-height: 46px;
+    padding: 10px 12px;
+
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 9px;
+
+    border: 1px solid #332c38;
+    border-radius: 12px;
+
+    background: rgba(12, 11, 15, 0.8);
+    color: #f0edf2;
+
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+
+    cursor: pointer;
+
+    transition:
+        background 0.18s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
+}
+
+.btn-nova span {
+    flex-shrink: 0;
+    color: #e34b68;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.btn-nova:hover {
+    background: #171117;
+    border-color: #69303e;
+    box-shadow: 0 0 14px rgba(190, 25, 55, 0.07);
+}
+
+.btn-nova:active {
+    background: #211219;
+}
+
+.btn-projetos {
+    flex: 0 0 auto;
+    justify-content: center;
+    gap: 7px;
+    padding-inline: 12px;
+}
+
+.btn-projetos span {
+    color: #e34b68;
+    font-size: 17px;
+}
+
+.btn-projetos[aria-expanded="true"] {
+    background: #211219;
+    border-color: #8d293d;
+    box-shadow: 0 0 12px rgba(190, 25, 55, 0.08);
+}
+
+@media (max-width: 360px) {
+    .sidebar-topo {
+        padding-inline: 8px;
+    }
+
+    .botoes-sidebar {
+        gap: 6px;
+    }
+
+    .btn-nova {
+        padding-inline: 8px;
+        font-size: 12px;
+    }
+
+    .btn-projetos {
+        gap: 5px;
+    }
+}
+
+
+
+/* ================================
+   BOTÕES DA BARRA LATERAL
+================================ */
+
+.sidebar-topo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.botoes-sidebar {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.botoes-sidebar .btn-nova {
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-projetos {
+    flex-shrink: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+
+    padding: 10px 12px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 10px;
+
+    background: transparent;
+    color: var(--texto);
+
+    font-size: 14px;
+    cursor: pointer;
+
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-projetos:hover {
+    background: var(--bg-hover);
+    border-color: #713333;
+}
+
+.btn-projetos:focus-visible {
+    outline: 2px solid #d14b4b;
+    outline-offset: 2px;
+}
+
+.btn-projetos span {
+    color: #d14b4b;
+    font-size: 17px;
+    line-height: 1;
+}
+
 
 .btn-nova {
     width: 100%;
@@ -1149,7 +1312,7 @@ body.sidebar-fechada .sidebar {
 .painel-uso {
     flex-shrink: 0;
 
-    width: 260px;
+    width: var(--largura-painel-uso);
     height: 100%;
 
     display: flex;
@@ -1166,7 +1329,7 @@ body.sidebar-fechada .sidebar {
 }
 
 body.uso-fechada .painel-uso {
-    margin-right: -260px;
+    margin-right: calc(var(--largura-painel-uso) * -1);
 }
 
 .uso-cabecalho h2 {
@@ -1485,6 +1648,11 @@ hr {
     line-height: 1.6;
 }
 
+
+/* ========================================
+   PYXIE 4.5 — CARTÕES DA TELA INICIAL
+======================================== */
+
 .sugestoes-iniciais {
     width: 100%;
 
@@ -1494,6 +1662,8 @@ hr {
 }
 
 .sugestao-inicial {
+    position: relative;
+    min-width: 0;
     min-height: 110px;
     padding: 18px;
 
@@ -1503,8 +1673,8 @@ hr {
     justify-content: center;
     gap: 8px;
 
-    border: 1px solid var(--borda);
-    border-radius: 14px;
+    border: 1px solid #29262d;
+    border-radius: 15px;
 
     background: #0b0b0b;
     color: var(--texto);
@@ -1517,26 +1687,59 @@ hr {
     transition:
         background 0.2s ease,
         border-color 0.2s ease,
+        box-shadow 0.2s ease,
         transform 0.2s ease;
 }
 
+/* Destaque discreto ao passar o mouse */
 .sugestao-inicial:hover {
-    background: var(--bg-hover);
-    border-color: #713333;
+    background: #100c10;
+    border-color: #713044;
+
+    box-shadow:
+        0 5px 18px rgba(0, 0, 0, 0.18),
+        0 0 12px rgba(139, 0, 0, 0.06);
+
     transform: translateY(-2px);
 }
 
-.sugestao-inicial strong {
-    font-size: 14px;
-    font-weight: 600;
+/* Estado de clique */
+.sugestao-inicial:active {
+    transform: translateY(0);
+    box-shadow: none;
 }
 
+/* Acessibilidade por teclado */
+.sugestao-inicial:focus-visible {
+    outline: 2px solid #b83b58;
+    outline-offset: 3px;
+}
+
+/* Título do cartão */
+.sugestao-inicial strong {
+    color: #f0eaf0;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+
+    transition: color 0.2s ease;
+}
+
+/* Descrição */
 .sugestao-inicial span {
     color: var(--texto-suave);
     font-size: 13px;
     line-height: 1.5;
+
+    transition: color 0.2s ease;
 }
 
+/* Título ligeiramente destacado no hover */
+.sugestao-inicial:hover strong {
+    color: #ffffff;
+}
+
+/* Adaptação para telas menores */
 @media (max-width: 520px) {
     .tela-inicial {
         padding: 24px 4px;
@@ -1557,6 +1760,21 @@ hr {
         font-size: 15px;
     }
 }
+
+/* Respeita a preferência por menos animações */
+@media (prefers-reduced-motion: reduce) {
+    .sugestao-inicial,
+    .sugestao-inicial strong,
+    .sugestao-inicial span {
+        transition: none;
+    }
+
+    .sugestao-inicial:hover,
+    .sugestao-inicial:active {
+        transform: none;
+    }
+}
+
 
 
 /* ========================================
@@ -1947,40 +2165,45 @@ hr {
 
 
 /* ========================================
-   PYXIE 4.3 — REFINAMENTO DA BARRA DE MENSAGEM
+   PYXIE 4.5 — BARRA DE MENSAGEM REFINADA
 ======================================== */
 
-/* Mantém a barra acima dos elementos de fundo */
+/* Mantém a barra acima do conteúdo ao redor */
 .chat-input {
     position: relative;
     z-index: 5;
 }
 
-/* Barra mais uniforme e fluida */
+/* Campo principal */
 .input-box {
     width: 100%;
     min-width: 0;
-    gap: 9px;
+    gap: 10px;
 
-    border-color: #34303a;
-    background: rgba(17, 16, 22, 0.97);
+    border: 1px solid #49303a;
+    background: #0d0b10;
 
     box-shadow:
-        0 8px 28px rgba(0, 0, 0, 0.24),
-        0 1px 0 rgba(255, 255, 255, 0.015) inset;
+        0 8px 26px rgba(0, 0, 0, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.02);
+
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        background 0.2s ease;
 }
 
-/* Destaque ao digitar */
+/* Realce discreto ao selecionar o campo */
 .input-box:focus-within {
-    border-color: #8d293d;
+    border-color: #b3264b;
 
     box-shadow:
-        0 0 0 3px rgba(139, 0, 0, 0.12),
-        0 8px 28px rgba(0, 0, 0, 0.28),
-        0 1px 0 rgba(255, 255, 255, 0.02) inset;
+        0 0 0 2px rgba(179, 38, 75, 0.10),
+        0 8px 26px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
-/* Campo de texto */
+/* Área de digitação */
 .input-box textarea {
     min-width: 0;
     min-height: 40px;
@@ -2001,14 +2224,28 @@ hr {
     cursor: wait;
 }
 
-/* Emblema da Fairy Tail */
+/* Menu rápido e emblema */
 .menu-rapido-container {
+    position: relative;
     z-index: 6;
 }
 
 .btn-menu-rapido {
     flex-shrink: 0;
     outline-offset: 3px;
+
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        transform 0.2s ease;
+}
+
+.btn-menu-rapido:hover {
+    border-color: #8d293d;
+}
+
+.btn-menu-rapido:active {
+    transform: scale(0.96);
 }
 
 .btn-menu-rapido:focus-visible {
@@ -2016,22 +2253,26 @@ hr {
     outline-offset: 3px;
 }
 
-/* Emblema da Fairy Tail — correção definitiva */
+/* Preserva as dimensões definidas no botão */
 .btn-menu-rapido .emblema-fairy-tail {
     display: block;
+
     width: 100%;
     height: 100%;
     max-width: 100%;
     max-height: 100%;
+
     object-fit: contain;
     flex-shrink: 0;
+
     pointer-events: none;
     user-select: none;
 }
 
-/* Menu: limita a altura e permite rolagem se necessário */
+/* Menu suspenso */
 .menu-rapido {
     width: min(210px, calc(100vw - 32px));
+
     max-height: min(320px, 60vh);
     max-height: min(320px, 60dvh);
 
@@ -2047,6 +2288,10 @@ hr {
 .menu-rapido-item {
     flex-shrink: 0;
     min-height: 46px;
+
+    transition:
+        background 0.18s ease,
+        color 0.18s ease;
 }
 
 .menu-rapido-item:focus-visible {
@@ -2058,6 +2303,20 @@ hr {
 #enviar {
     flex-shrink: 0;
     align-self: flex-end;
+
+    transition:
+        filter 0.2s ease,
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+#enviar:hover {
+    filter: brightness(1.08);
+    box-shadow: 0 0 16px rgba(225, 24, 65, 0.20);
+}
+
+#enviar:active {
+    transform: scale(0.95);
 }
 
 #enviar:focus-visible {
@@ -2119,3 +2378,1105 @@ hr {
 .uso-barra-fundo[hidden] {
     display: none;
 }
+
+
+/* ================================
+   BOTÃO PROJETOS
+================================ */
+
+.btn-projetos {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    padding: 11px 12px;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.btn-projetos span {
+    color: #d14b4b;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.btn-projetos:hover {
+    border-color: #713333;
+}
+
+.btn-projetos[aria-expanded="true"] {
+    background: var(--bg-ativo);
+    border-color: #713333;
+}
+
+
+/* ========================================
+   PYXIE 4.5 — PAINEL DE PROJETOS
+======================================== */
+
+/* Botões superiores da barra lateral */
+.sidebar-topo {
+    gap: 9px;
+    padding: 18px 12px 14px;
+}
+
+.botoes-sidebar {
+    flex-direction: column;
+    gap: 8px;
+}
+
+.botoes-sidebar .btn-nova,
+.botoes-sidebar .btn-projetos {
+    width: 100%;
+    min-height: 44px;
+    justify-content: flex-start;
+    padding: 10px 14px;
+    border-radius: 11px;
+    font-size: 13px;
+}
+
+/* Realce discreto do botão Projetos */
+.btn-projetos {
+    border-color: #302a33;
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.btn-projetos:hover {
+    background: #171117;
+    border-color: #69303e;
+}
+
+.btn-projetos[aria-expanded="true"] {
+    background: rgba(139, 0, 0, 0.13);
+    border-color: #8d293d;
+}
+
+/* Área que substitui a lista de conversas */
+.painel-projetos {
+    flex: 1;
+    min-height: 0;
+    padding: 8px 12px 14px;
+    overflow-y: auto;
+}
+
+.painel-projetos[hidden] {
+    display: none !important;
+}
+
+/* Cabeçalho do painel */
+.projetos-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 8px 2px 16px;
+}
+
+.projetos-cabecalho h2 {
+    color: #eee8f0;
+    font-size: 16px;
+    font-weight: 650;
+    letter-spacing: 0.2px;
+}
+
+/* Botão de criar projeto */
+#novo-projeto {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #71303d;
+    border-radius: 10px;
+    background: rgba(139, 0, 0, 0.15);
+    color: #f0788b;
+    font-size: 21px;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+#novo-projeto:hover {
+    background: rgba(165, 0, 0, 0.28);
+    border-color: #a83b50;
+}
+
+/* Lista dos projetos */
+.lista-projetos {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Mensagem quando não há projetos */
+.projetos-vazio {
+    margin: 18px 4px;
+    padding: 18px 14px;
+    border: 1px dashed #38303b;
+    border-radius: 12px;
+    color: #99909f;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+/* Botão para voltar às conversas */
+#voltar-conversas {
+    width: 100%;
+    margin-top: 18px;
+    padding: 11px 12px;
+    border: 1px solid #302a33;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    color: #c8c0ce;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+#voltar-conversas:hover {
+    background: #171117;
+    border-color: #69303e;
+    color: #ffffff;
+}
+
+/* Rolagem do painel */
+.painel-projetos::-webkit-scrollbar {
+    width: 6px;
+}
+
+.painel-projetos::-webkit-scrollbar-thumb {
+    border-radius: 10px;
+    background: #39323c;
+}
+
+.painel-projetos::-webkit-scrollbar-thumb:hover {
+    background: #574754;
+}
+
+/* Acessibilidade */
+#novo-projeto:focus-visible,
+#voltar-conversas:focus-visible {
+    outline: 2px solid #d14b4b;
+    outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+    .painel-projetos {
+        padding-inline: 10px;
+    }
+
+    .projetos-cabecalho h2 {
+        font-size: 15px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #novo-projeto,
+    #voltar-conversas,
+    .btn-projetos {
+        transition: none;
+    }
+}
+
+
+/* ========================================
+   PYXIE 4.5 — IDENTIDADE VISUAL REFINADA
+   Camada visual complementar
+======================================== */
+
+:root {
+    --px-red: #f02d50;
+    --px-red-dark: #a90e2b;
+    --px-border: rgba(135, 123, 158, 0.20);
+    --px-panel: rgba(9, 9, 17, 0.94);
+    --px-muted: #9694a8;
+}
+
+/* ========================================
+   FUNDO CÓSMICO
+======================================== */
+
+.chat-container {
+    background-color: #05040a;
+
+    background-image:
+        radial-gradient(
+            ellipse at 0% 45%,
+            rgba(117, 13, 48, 0.18),
+            transparent 42%
+        ),
+        radial-gradient(
+            ellipse at 100% 52%,
+            rgba(66, 25, 113, 0.14),
+            transparent 43%
+        ),
+        radial-gradient(
+            ellipse at 48% 100%,
+            rgba(25, 31, 75, 0.12),
+            transparent 50%
+        );
+
+    border: 0;
+}
+
+/* ========================================
+   BARRA LATERAL
+======================================== */
+
+.sidebar {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(9, 8, 15, 0.99),
+            rgba(4, 4, 8, 1)
+        );
+
+    border-right: 1px solid var(--px-border);
+}
+
+.sidebar-topo {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    padding: 20px 14px 14px;
+}
+
+/* O HTML possui uma div vazia com esta classe.
+   Escondê-la evita espaço desnecessário. */
+.sidebar-topo > .botoes-sidebar:empty {
+    display: none;
+}
+
+/* Botões Nova conversa e Projetos */
+.sidebar-topo > .btn-nova {
+    width: 100%;
+    min-height: 52px;
+    flex: 0 0 auto;
+
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 13px;
+
+    padding: 12px 17px;
+
+    border: 1px solid rgba(135, 123, 158, 0.28);
+    border-radius: 13px;
+
+    background: rgba(12, 11, 19, 0.72);
+    color: #efedf5;
+
+    font-size: 14px;
+    font-weight: 500;
+
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+.sidebar-topo > .btn-nova > span {
+    width: 22px;
+    flex-shrink: 0;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    color: var(--px-red);
+    font-size: 23px;
+    line-height: 1;
+}
+
+.sidebar-topo > .btn-nova:hover {
+    background: rgba(38, 17, 29, 0.76);
+    border-color: rgba(240, 45, 80, 0.55);
+    box-shadow: 0 0 22px rgba(240, 45, 80, 0.06);
+}
+
+.sidebar-topo > .btn-nova:active {
+    transform: scale(0.985);
+}
+
+/* Botão Projetos */
+#abrir-projetos {
+    justify-content: flex-start;
+}
+
+#abrir-projetos > span {
+    font-size: 22px;
+}
+
+#abrir-projetos[aria-expanded="true"] {
+    background: rgba(113, 18, 45, 0.23);
+    border-color: rgba(240, 45, 80, 0.65);
+    box-shadow: inset 3px 0 0 var(--px-red);
+}
+
+/* Histórico */
+.lista-conversas {
+    padding: 8px 12px 14px;
+    scrollbar-width: thin;
+    scrollbar-color: #39313f transparent;
+}
+
+.grupo-titulo {
+    padding: 18px 10px 9px;
+
+    color: var(--px-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.item-conversa {
+    margin: 3px 0;
+    border: 1px solid transparent;
+    border-radius: 11px;
+
+    transition:
+        background 0.18s ease,
+        border-color 0.18s ease;
+}
+
+.item-conversa:hover {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.item-conversa.ativa {
+    background:
+        linear-gradient(
+            100deg,
+            rgba(147, 17, 48, 0.28),
+            rgba(50, 14, 31, 0.30)
+        );
+
+    border-color: rgba(240, 45, 80, 0.12);
+    box-shadow: inset 3px 0 0 var(--px-red);
+}
+
+.item-titulo {
+    padding: 12px 10px 12px 14px;
+    font-size: 13px;
+}
+
+.sidebar-rodape {
+    padding: 12px 14px 16px;
+    border-top: 1px solid var(--px-border);
+}
+
+.btn-limpar {
+    min-height: 40px;
+    border-radius: 10px;
+}
+
+.btn-limpar:hover {
+    background: rgba(240, 45, 80, 0.08);
+    color: #ff728b;
+}
+
+/* ========================================
+   PAINEL DE PROJETOS
+======================================== */
+
+.painel-projetos {
+    flex: 1;
+    min-height: 0;
+
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    padding: 12px 14px 16px;
+    overflow: hidden;
+}
+
+.painel-projetos[hidden] {
+    display: none !important;
+}
+
+.projetos-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+
+    padding: 5px 2px 13px;
+    border-bottom: 1px solid var(--px-border);
+}
+
+.projetos-cabecalho h2 {
+    color: #f0edf5;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+#novo-projeto {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    border: 1px solid rgba(240, 45, 80, 0.4);
+    border-radius: 10px;
+
+    background: rgba(169, 14, 43, 0.18);
+    color: #ff5573;
+
+    font-size: 23px;
+    cursor: pointer;
+
+    transition: background 0.2s, transform 0.2s;
+}
+
+#novo-projeto:hover {
+    background: rgba(169, 14, 43, 0.36);
+    transform: translateY(-1px);
+}
+
+.lista-projetos {
+    min-height: 0;
+    overflow-y: auto;
+
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.projetos-vazio {
+    padding: 14px 6px;
+
+    color: var(--px-muted);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.projetos-vazio[hidden] {
+    display: none !important;
+}
+
+.btn-voltar-conversas {
+    width: 100%;
+    min-height: 42px;
+    margin-top: auto;
+    padding: 10px;
+
+    border: 1px solid var(--px-border);
+    border-radius: 10px;
+
+    background: rgba(255, 255, 255, 0.025);
+    color: #c8c4d3;
+
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.btn-voltar-conversas:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(240, 45, 80, 0.4);
+}
+
+/* ========================================
+   CABEÇALHO CENTRAL
+======================================== */
+
+.chat-header {
+    min-height: 76px;
+    padding: 12px 18px;
+
+    background: rgba(5, 4, 11, 0.76);
+    border-bottom: 1px solid var(--px-border);
+
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.chat-titulo h1 {
+    color: #f4f0fa;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}
+
+.versao-pyxie {
+    color: var(--px-red);
+}
+
+.chat-titulo p {
+    color: #9d96ae;
+    font-size: 10px;
+    letter-spacing: 1.7px;
+}
+
+.btn-icone {
+    border: 1px solid transparent;
+    border-radius: 11px;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.btn-icone:hover {
+    background: rgba(255, 255, 255, 0.045);
+    border-color: var(--px-border);
+    color: #ff607c;
+}
+
+/* ========================================
+   MENSAGENS
+======================================== */
+
+#chat {
+    scrollbar-width: thin;
+    scrollbar-color: #39313f transparent;
+}
+
+.message {
+    line-height: 1.75;
+    letter-spacing: 0.005em;
+}
+
+.pyxie-message {
+    color: #e5e2ec;
+}
+
+.user-message {
+    background: linear-gradient(
+        135deg,
+        rgba(48, 42, 55, 0.96),
+        rgba(34, 31, 41, 0.96)
+    );
+
+    border: 1px solid rgba(150, 137, 168, 0.12);
+    border-radius: 18px 18px 5px 18px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.conteudo-resposta .titulo-resposta {
+    color: #ff5573;
+}
+
+.conteudo-resposta a {
+    color: #ff7e96;
+}
+
+.conteudo-resposta a:hover {
+    color: #ffb0bf;
+}
+
+/* ========================================
+   BARRA DE MENSAGEM
+======================================== */
+
+.chat-input {
+    padding-top: 14px;
+    padding-bottom: 22px;
+    background: linear-gradient(
+        to top,
+        rgba(4, 4, 10, 0.98),
+        rgba(4, 4, 10, 0.76),
+        transparent
+    );
+}
+
+.input-box {
+    min-height: 76px;
+    gap: 12px;
+    padding: 8px 10px;
+
+    border: 1px solid #a71938;
+    border-radius: 28px;
+
+    background: rgba(12, 11, 19, 0.97);
+
+    box-shadow:
+        0 0 0 1px rgba(240, 45, 80, 0.045),
+        0 10px 36px rgba(0, 0, 0, 0.32);
+
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        background 0.2s ease;
+}
+
+.input-box:focus-within {
+    border-color: #ef3155;
+    background: rgba(15, 12, 21, 0.99);
+
+    box-shadow:
+        0 0 0 3px rgba(240, 45, 80, 0.09),
+        0 10px 36px rgba(0, 0, 0, 0.34);
+}
+
+/* Emblema */
+.btn-menu-rapido {
+    width: 50px;
+    height: 50px;
+    padding: 8px;
+
+    border: 1px solid rgba(240, 45, 80, 0.18);
+    background:
+        radial-gradient(
+            circle,
+            rgba(169, 14, 43, 0.25),
+            rgba(25, 16, 26, 0.98) 72%
+        );
+
+    box-shadow: inset 0 0 14px rgba(240, 45, 80, 0.05);
+}
+
+.btn-menu-rapido:hover,
+.btn-menu-rapido[aria-expanded="true"] {
+    border-color: rgba(240, 45, 80, 0.7);
+    box-shadow: 0 0 18px rgba(240, 45, 80, 0.13);
+}
+
+.btn-menu-rapido .emblema-fairy-tail {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* Campo de texto */
+.input-box textarea {
+    align-self: center;
+    min-height: 44px;
+    padding: 11px 6px;
+
+    color: #f1edf7;
+    font-size: 15px;
+    line-height: 22px;
+}
+
+.input-box textarea::placeholder {
+    color: #898497;
+}
+
+/* Enviar */
+#enviar {
+    width: 50px;
+    height: 50px;
+
+    background: linear-gradient(145deg, #f02d50, #b70f31);
+    box-shadow: 0 4px 16px rgba(240, 45, 80, 0.17);
+}
+
+#enviar:hover {
+    background: linear-gradient(145deg, #ff4264, #d2193d);
+    box-shadow: 0 5px 20px rgba(240, 45, 80, 0.26);
+}
+
+/* Menu rápido */
+.menu-rapido {
+    border-color: rgba(150, 125, 165, 0.24);
+    border-radius: 15px;
+
+    background: rgba(13, 11, 19, 0.98);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
+
+.menu-rapido-item {
+    border-radius: 10px;
+}
+
+.menu-rapido-item:hover {
+    background: rgba(169, 14, 43, 0.15);
+    border-color: rgba(240, 45, 80, 0.2);
+}
+
+/* ========================================
+   PAINEL DE USO DA API
+======================================== */
+
+.painel-uso {
+    width: 300px;
+    flex: 0 0 300px;
+
+    padding: 20px 16px;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(8, 8, 15, 0.99),
+            rgba(4, 4, 9, 1)
+        );
+
+    border-left: 1px solid var(--px-border);
+    scrollbar-width: thin;
+    scrollbar-color: #39313f transparent;
+}
+
+body.uso-fechada .painel-uso {
+    margin-right: -300px;
+}
+
+.uso-cabecalho h2 {
+    margin-bottom: 20px;
+    color: #e8e3f0;
+    font-size: 15px;
+    letter-spacing: 0.07em;
+}
+
+.uso-vazio {
+    color: var(--px-muted);
+    line-height: 1.7;
+}
+
+.uso-grupo,
+.uso-servicos,
+.seletor-modo {
+    padding: 16px 13px;
+    border: 1px solid var(--px-border);
+    border-radius: 15px;
+
+    background: linear-gradient(
+        145deg,
+        rgba(18, 17, 29, 0.8),
+        rgba(9, 9, 16, 0.8)
+    );
+}
+
+.uso-grupo[hidden] {
+    display: none !important;
+}
+
+.uso-bloco {
+    margin-bottom: 20px;
+}
+
+.uso-bloco:last-child {
+    margin-bottom: 0;
+}
+
+.uso-bloco-topo {
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.uso-bloco-topo span:first-child {
+    color: #aaa5b8;
+}
+
+.uso-bloco-topo span:last-child {
+    color: #eae6f2;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.uso-barra-fundo {
+    height: 9px;
+    margin-top: 9px;
+
+    border: 1px solid rgba(255, 255, 255, 0.025);
+    border-radius: 999px;
+
+    background: #222333;
+}
+
+.uso-barra {
+    border-radius: 999px;
+    background: linear-gradient(90deg, #19bd68, #44e38d);
+    box-shadow: 0 0 10px rgba(40, 211, 119, 0.12);
+}
+
+.uso-barra.barra-atencao {
+    background: linear-gradient(90deg, #bd8526, #f0c35c);
+}
+
+.uso-barra.barra-critica {
+    background: linear-gradient(90deg, #b40f34, #ff4264);
+}
+
+.uso-legenda,
+.uso-nota {
+    color: var(--px-muted);
+    font-size: 11px;
+    line-height: 1.65;
+}
+
+.uso-nota {
+    margin-top: 14px;
+}
+
+.uso-nota strong {
+    color: #ded9e9;
+}
+
+/* Serviços externos */
+.uso-servicos {
+    margin-top: 18px;
+}
+
+.uso-servicos > .seletor-titulo {
+    margin-bottom: 19px;
+    color: #e5e0ed;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Seletor Groq / Gemini / Auto */
+.seletor-modo {
+    margin-top: 18px;
+    padding: 16px 13px;
+}
+
+.seletor-modo .seletor-titulo {
+    color: #e5e0ed;
+    font-weight: 600;
+}
+
+.modo-opcoes {
+    gap: 4px;
+    padding: 4px;
+
+    border-color: rgba(135, 123, 158, 0.19);
+    border-radius: 13px;
+
+    background: #14131e;
+}
+
+.modo-btn {
+    min-height: 40px;
+    border-radius: 10px;
+    font-size: 12px;
+}
+
+.modo-btn[aria-checked="true"] {
+    background: linear-gradient(145deg, #df1f43, #a90e2b);
+    box-shadow: 0 3px 12px rgba(240, 45, 80, 0.15);
+}
+
+.modo-descricao {
+    line-height: 1.65;
+}
+
+/* ========================================
+   BLOCOS DE CÓDIGO
+======================================== */
+
+.code-block {
+    border-color: rgba(135, 123, 158, 0.23);
+    border-radius: 13px;
+    background: rgba(7, 7, 13, 0.92);
+}
+
+.code-block-header {
+    background: rgba(24, 22, 33, 0.96);
+}
+
+.code-copy-button:hover {
+    border-color: rgba(240, 45, 80, 0.5);
+}
+
+/* ========================================
+   ACESSIBILIDADE E TELAS MENORES
+======================================== */
+
+button {
+    -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible {
+    outline-color: #ff607c;
+}
+
+@media (max-width: 1100px) {
+    .painel-uso {
+        width: 280px;
+        flex-basis: 280px;
+    }
+
+    body.uso-fechada .painel-uso {
+        margin-right: -280px;
+    }
+}
+
+@media (max-width: 800px) {
+    .sidebar {
+        width: min(300px, 86vw);
+        max-width: 86vw;
+    }
+
+    .sidebar-topo {
+        padding: 16px 12px 12px;
+    }
+
+    .chat-header {
+        min-height: 68px;
+        padding: 10px 12px;
+    }
+
+    .chat-titulo h1 {
+        font-size: 21px;
+    }
+
+    .chat-titulo p {
+        font-size: 9px;
+        letter-spacing: 1px;
+    }
+
+    .chat-input {
+        padding: 10px 12px max(14px, env(safe-area-inset-bottom));
+    }
+
+    .input-box {
+        min-height: 62px;
+        gap: 7px;
+        padding: 6px;
+    }
+
+    .btn-menu-rapido,
+    #enviar {
+        width: 42px;
+        height: 42px;
+    }
+
+    .painel-uso,
+    body.uso-fechada .painel-uso {
+        width: min(320px, 88vw);
+        max-width: 88vw;
+        flex-basis: auto;
+    }
+
+    #chat {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .user-message {
+        max-width: 92%;
+    }
+}
+
+@media (max-width: 420px) {
+    .chat-titulo {
+        max-width: calc(100% - 108px);
+    }
+
+    .chat-titulo h1 {
+        font-size: 18px;
+    }
+
+    .chat-titulo p {
+        font-size: 8px;
+        letter-spacing: 0.6px;
+    }
+
+    .btn-icone {
+        width: 34px;
+        height: 38px;
+    }
+
+    .input-box textarea {
+        font-size: 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar,
+    .sidebar-topo > .btn-nova,
+    .item-conversa,
+    .input-box,
+    .btn-menu-rapido,
+    #enviar,
+    .modo-btn {
+        transition: none !important;
+    }
+}
+
+
+/* ========================================
+   PYXIE 4.5 — REFINAMENTO VISUAL DA SIDEBAR
+======================================== */
+
+.sidebar-topo {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 16px 16px;
+}
+
+.botoes-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+/* Botões principais da barra lateral */
+
+.btn-nova,
+.btn-projetos {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+
+    width: 100%;
+    min-height: 46px;
+    padding: 12px 14px;
+
+    border: 1px solid #302126;
+    border-radius: 12px;
+
+    background: linear-gradient(
+        135deg,
+        #191316 0%,
+        #100d0f 100%
+    );
+
+    color: #e8e0e3;
+
+    font-size: 14px;
+    font-weight: 500;
+
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+/* Interação e destaque */
+
+.btn-nova:hover,
+.btn-projetos:hover {
+    background: linear-gradient(
+        135deg,
+        #35121e 0%,
+        #1b1017 100%
+    );
+
+    border-color: #76263f;
+    box-shadow: 0 0 14px rgba(139, 0, 0, 0.16);
+    transform: translateY(-1px);
+}
+
+/* Destaque vermelho dos ícones, sem alterar o HTML */
+
+.btn-nova svg,
+.btn-projetos svg {
+    color: #c43b5b;
+    flex-shrink: 0;
+}
+
+/* Foco por teclado */
+
+.btn-nova:focus-visible,
+.btn-projetos:focus-visible {
+    outline: 2px solid #a83250;
+    outline-offset: 3px;
+}
+

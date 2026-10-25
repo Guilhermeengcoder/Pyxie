@@ -708,7 +708,11 @@ class Brain:
         else:
             try:
                 prompt_en = preparar_prompt_imagem(descricao)
-                imagem = cloudflare_imagem.gerar(prompt_en)
+                imagem = cloudflare_imagem.gerar(
+                    prompt_en,
+                    prompt_original=descricao,
+                    chat_id=sessao.chat_id,
+                )
                 sessao.imagem_pendente = imagem["id"]
                 texto = f"Pronto! Aqui está a imagem: {descricao}."
             except ErroLLM as erro:

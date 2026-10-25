@@ -78,10 +78,12 @@ def _periodo(servico):
         )
         if agora < inicio:
             # Ainda não chegou o dia deste mês: o ciclo começou no mês anterior.
-            inicio = (inicio - timedelta(days=1)).replace(day=dia)
-        proximo = (inicio + timedelta(days=32)).replace(day=dia)
+            mes_anterior = inicio.replace(day=1) - timedelta(days=1)
+            inicio = mes_anterior.replace(day=dia)
+        proximo = (inicio.replace(day=1) + timedelta(days=32)).replace(day=dia)
         return inicio.strftime("%Y-%m-%d"), (proximo - agora).total_seconds()
-
+    
+    
     if tipo == "dia":
         proximo = (agora + timedelta(days=1)).replace(
             hour=0, minute=0, second=0, microsecond=0

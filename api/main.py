@@ -15,6 +15,7 @@ from core import usage_gemini
 from core import llm
 from core import llm_config
 from core import usage_servicos
+from core import db
 
 # Sem /docs nem /openapi.json públicos: não mostram o mapa da API a estranhos.
 app = FastAPI(
@@ -66,6 +67,27 @@ class Pergunta(BaseModel):
 
 class NovoModo(BaseModel):
     modo: Literal["groq", "gemini", "auto"]
+    
+
+class NovoProjeto(BaseModel):
+    nome: str
+    instrucoes: str = ""
+
+
+class AtualizarProjeto(BaseModel):
+    nome: Optional[str] = None
+    instrucoes: Optional[str] = None
+
+
+class ArquivoProjeto(BaseModel):
+    nome: str
+    conteudo: str
+
+
+class MensagemProjeto(BaseModel):
+    papel: Literal["user", "assistant"]
+    conteudo: str
+
 
 
 def _uso_atual() -> dict:
@@ -179,6 +201,173 @@ def ver_imagem(imagem_id: str):
     if not caminho:
         raise HTTPException(status_code=404, detail="Imagem não encontrada.")
     return FileResponse(caminho)
+
+
+# =============================================================
+# PROJETOS — PostgreSQL (Neon)
+# =============================================================
+
+@app.get("/projetos", dependencies=[Depends(exigir_token)])
+def listar_projetos():
+    return db.listar_projetos() or []
+
+
+@app.post("/projetos", dependencies=[Depends(exigir_token)])
+def criar_projeto(projeto: NovoProjeto):
+    try:
+        resultado = db.criar_projeto(
+            projeto.nome,
+            projeto.instrucoes,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if resultado is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Banco de dados indisponível.",
+        )
+
+    return resultado
+
+
+@app.get("/projetos/{projeto_id}", dependencies=[Depends(exigir_token)])
+def buscar_projeto(projeto_id: int):
+    projeto = db.buscar_projeto(projeto_id)
+
+    if projeto is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    return projeto
+
+
+@app.patch("/projetos/{projeto_id}", dependencies=[Depends(exigir_token)])
+def atualizar_projeto(projeto_id: int, dados: AtualizarProjeto):
+    campos = dados.model_dump(exclude_unset=True)
+
+    try:
+        projeto = db.atualizar_projeto(projeto_id, **campos)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if projeto is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    return projeto
+
+
+@app.delete("/projetos/{projeto_id}", dependencies=[Depends(exigir_token)])
+def excluir_projeto(projeto_id: int):
+    if not db.excluir_projeto(projeto_id):
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    return {"ok": True}
+
+
+# =============================================================
+# ARQUIVOS DE CONHECIMENTO DOS PROJETOS
+# =============================================================
+
+@app.get(
+    "/projetos/{projeto_id}/arquivos",
+    dependencies=[Depends(exigir_token)],
+)
+def listar_arquivos_projeto(projeto_id: int):
+    if db.buscar_projeto(projeto_id) is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    return db.listar_arquivos_projeto(projeto_id) or []
+
+
+@app.get(
+    "/projetos/{projeto_id}/arquivos/{nome}",
+    dependencies=[Depends(exigir_token)],
+)
+def buscar_arquivo_projeto(projeto_id: int, nome: str):
+    arquivo = db.buscar_arquivo_projeto(projeto_id, nome)
+
+    if arquivo is None:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+
+    return arquivo
+
+
+@app.put(
+    "/projetos/{projeto_id}/arquivos",
+    dependencies=[Depends(exigir_token)],
+)
+def salvar_arquivo_projeto(projeto_id: int, arquivo: ArquivoProjeto):
+    if db.buscar_projeto(projeto_id) is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    try:
+        resultado = db.salvar_arquivo_projeto(
+            projeto_id,
+            arquivo.nome,
+            arquivo.conteudo,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if resultado is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível salvar o arquivo.",
+        )
+
+    return resultado
+
+
+@app.delete(
+    "/projetos/{projeto_id}/arquivos/{nome}",
+    dependencies=[Depends(exigir_token)],
+)
+def excluir_arquivo_projeto(projeto_id: int, nome: str):
+    if not db.excluir_arquivo_projeto(projeto_id, nome):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+
+    return {"ok": True}
+
+
+# =============================================================
+# HISTÓRICO PERMANENTE DOS PROJETOS
+# =============================================================
+
+@app.get(
+    "/projetos/{projeto_id}/mensagens",
+    dependencies=[Depends(exigir_token)],
+)
+def listar_mensagens_projeto(projeto_id: int, limite: int = 50):
+    if db.buscar_projeto(projeto_id) is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    return db.listar_mensagens_projeto(projeto_id, limite)
+
+
+@app.post(
+    "/projetos/{projeto_id}/mensagens",
+    dependencies=[Depends(exigir_token)],
+)
+def registrar_mensagem_projeto(
+    projeto_id: int,
+    mensagem: MensagemProjeto,
+):
+    if db.buscar_projeto(projeto_id) is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    resultado = db.registrar_mensagem_projeto(
+        projeto_id,
+        mensagem.papel,
+        mensagem.conteudo,
+    )
+
+    if resultado is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível registrar a mensagem.",
+        )
+
+    return resultado
 
 app.mount(
     "/",

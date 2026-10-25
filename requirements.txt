@@ -23,3 +23,6 @@ deep-translator
 # Controle de sistema (Windows/Linux desktop)
 keyboard
 screen-brightness-control
+
+# Banco de dados (Neon / Postgres)
+psycopg[binary]

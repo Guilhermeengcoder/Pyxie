@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 from core import usage_servicos
 from core.llm_erros import ErroLLM, ErroCota, ErroIndisponivel
+from core import db
 
 load_dotenv()
 
@@ -25,6 +26,9 @@ MODELO = os.getenv(
 PASTA = Path(__file__).resolve().parent.parent / "data" / "imagens"
 TIMEOUT = 120
 MAX_CHARS_PROMPT = 500
+LARGURA = 1024
+ALTURA = 1024
+ETAPAS = 4
 
 _ID_VALIDO = re.compile(r"^[0-9a-f]{32}$")
 
@@ -45,14 +49,13 @@ def _neuronios_por_imagem() -> int:
         return 0
 
 
-def gerar(prompt: str) -> dict:
-    """Devolve {"id","arquivo","formato","modelo"} ou levanta ErroLLM."""
+def _gerar_e_salvar(prompt: str, imagem_id: str) -> dict:
+    """Chama a Cloudflare e grava o arquivo. Levanta ErroLLM em falha."""
     token = (os.getenv("CLOUDFLARE_API_TOKEN") or "").strip()
     conta = (os.getenv("CLOUDFLARE_ACCOUNT_ID") or "").strip()
     if not token or not conta:
         raise ErroLLM("cloudflare", "CLOUDFLARE_API_TOKEN/ACCOUNT_ID não configurados")
 
-    prompt = (prompt or "").strip()[:MAX_CHARS_PROMPT]
     if not prompt:
         raise ErroLLM("cloudflare", "prompt vazio")
 
@@ -63,9 +66,9 @@ def gerar(prompt: str) -> dict:
     corpo = {
         "prompt": prompt,
         "negative_prompt": "blurry, distorted, low quality, text, watermark",
-        "width": 1024,
-        "height": 1024,
-        "num_steps": 4,
+        "width": LARGURA,
+        "height": ALTURA,
+        "num_steps": ETAPAS,
     }
 
     try:
@@ -105,13 +108,67 @@ def gerar(prompt: str) -> dict:
         raise ErroLLM("cloudflare", "formato de imagem não reconhecido")
 
     PASTA.mkdir(parents=True, exist_ok=True)
-    imagem_id = uuid.uuid4().hex
     arquivo = PASTA / f"{imagem_id}.{ext}"
     arquivo.write_bytes(conteudo)
 
     usage_servicos.registrar("cloudflare", _neuronios_por_imagem())
 
-    return {"id": imagem_id, "arquivo": str(arquivo), "formato": ext, "modelo": MODELO}
+    return {
+        "id": imagem_id,
+        "arquivo": str(arquivo),
+        "formato": ext,
+        "modelo": MODELO,
+    }
+
+
+def _registrar_geracao(imagem_id, chat_id, prompt_original, prompt_enviado,
+                       resultado, erro=None, arquivo_chave=None):
+    """Grava no banco. db.registrar_geracao nunca levanta erro."""
+    neuronios = _neuronios_por_imagem() if resultado == "ok" else 0
+
+    db.registrar_geracao(
+        imagem_id=imagem_id,
+        chat_id=chat_id,
+        servico="cloudflare",
+        modelo=MODELO,
+        operacao="texto_para_imagem",
+        prompt_original=prompt_original,
+        prompt_enviado=prompt_enviado,
+        resultado=resultado,
+        erro=(str(erro)[:500] if erro else None),
+        etapas=ETAPAS,
+        largura=LARGURA,
+        altura=ALTURA,
+        neuronios=(neuronios or None),   # NULL quando não confirmado
+        custo_usd=None,                  # NULL quando não confirmado
+        arquivo_chave=arquivo_chave,
+    )
+
+
+def gerar(prompt: str, prompt_original: str = None, chat_id: str = None) -> dict:
+    """Devolve {"id","arquivo","formato","modelo"} ou levanta ErroLLM.
+
+    prompt           -> prompt em inglês enviado ao modelo
+    prompt_original  -> descrição em português (só para o registro)
+    chat_id          -> chat de origem (só para o registro)
+    """
+    imagem_id = uuid.uuid4().hex
+    prompt = (prompt or "").strip()[:MAX_CHARS_PROMPT]
+
+    try:
+        resultado = _gerar_e_salvar(prompt, imagem_id)
+    except ErroLLM as erro:
+        _registrar_geracao(
+            imagem_id, chat_id, prompt_original, prompt,
+            "erro", erro=erro,
+        )
+        raise
+
+    _registrar_geracao(
+        imagem_id, chat_id, prompt_original, prompt,
+        "ok", arquivo_chave=f"{imagem_id}.{resultado['formato']}",
+    )
+    return resultado
 
 
 def caminho_da_imagem(imagem_id: str):

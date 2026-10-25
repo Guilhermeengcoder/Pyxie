@@ -41,10 +41,14 @@ CREATE TABLE IF NOT EXISTS projeto_mensagens (
 
 CREATE INDEX IF NOT EXISTS idx_msgs_projeto ON projeto_mensagens (projeto_id, id);
 
+
 CREATE TABLE IF NOT EXISTS projeto_arquivos (
-    id          BIGSERIAL PRIMARY KEY,
-    projeto_id  BIGINT NOT NULL REFERENCES projetos(id) ON DELETE CASCADE,
-    nome        TEXT NOT NULL,
-    conteudo    TEXT NOT NULL,               -- texto do arquivo (conhecimento do projeto)
-    criado_em   TIMESTAMPTZ NOT NULL DEFAULT now()
+    id           BIGSERIAL PRIMARY KEY,
+    projeto_id   BIGINT NOT NULL REFERENCES projetos(id) ON DELETE CASCADE,
+    nome         TEXT NOT NULL,
+    conteudo     TEXT NOT NULL,
+    criado_em    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_projeto_arquivo_nome UNIQUE (projeto_id, nome)
 );

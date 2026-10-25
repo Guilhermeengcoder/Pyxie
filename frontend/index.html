@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 
@@ -12,15 +13,51 @@
 
     <div class="app">
 
-        <!-- HISTÓRICO DE CONVERSAS -->
+        <!-- HISTÓRICO DE CONVERSAS E PROJETOS -->
         <aside class="sidebar" id="sidebar" aria-label="Histórico de conversas">
 
             <div class="sidebar-topo">
+
+
+                <div class="botoes-sidebar"></div>
                 <button id="nova-conversa" class="btn-nova" type="button">
                     <span aria-hidden="true">+</span> Nova conversa
                 </button>
+
+                <button id="abrir-projetos" class="btn-nova btn-projetos"
+                    type="button" aria-label="Abrir projetos"
+                    aria-expanded="false" aria-controls="painel-projetos">
+                    <span aria-hidden="true">▦</span> Projetos
+                </button>
+
             </div>
 
+            <!-- PAINEL DE PROJETOS -->
+            <section id="painel-projetos" class="painel-projetos" hidden>
+
+                <div class="projetos-cabecalho">
+                    <h2>Meus projetos</h2>
+
+                    <button id="novo-projeto" type="button"
+                        aria-label="Criar projeto"
+                        title="Criar projeto">+</button>
+                </div>
+
+                <nav id="lista-projetos" class="lista-projetos"
+                    aria-label="Lista de projetos"></nav>
+
+                <p id="projetos-vazio" class="projetos-vazio">
+                    Seus projetos aparecerão aqui.
+                </p>
+
+                <button id="voltar-conversas" class="btn-voltar-conversas"
+                    type="button">
+                    ← Voltar às conversas
+                </button>
+
+            </section>
+
+            <!-- LISTA ORIGINAL DE CONVERSAS PRESERVADA -->
             <nav id="lista-conversas" class="lista-conversas"></nav>
 
             <div class="sidebar-rodape">
@@ -289,49 +326,50 @@
 
             </div>
 
-            <!-- SERVIÇOS EXTERNOS (Tavily, Firecrawl, Cloudflare) -->
-                <div id="uso-servicos" class="uso-servicos">
+            <!-- SERVIÇOS EXTERNOS -->
+            <div id="uso-servicos" class="uso-servicos">
 
-                    <div class="seletor-titulo">Serviços de busca e imagem</div>
+                <div class="seletor-titulo">Serviços de busca e imagem</div>
 
-                    <div class="uso-bloco">
-                        <div class="uso-bloco-topo">
-                            <span>Tavily (mês)</span>
-                            <span id="uso-tav-texto">—</span>
-                        </div>
-                        <div class="uso-barra-fundo">
-                            <div id="uso-tav-barra" class="uso-barra"></div>
-                        </div>
-                        <div id="uso-tav-reset" class="uso-legenda"></div>
+                <div class="uso-bloco">
+                    <div class="uso-bloco-topo">
+                        <span>Tavily (mês)</span>
+                        <span id="uso-tav-texto">—</span>
                     </div>
-
-                    <div class="uso-bloco">
-                        <div class="uso-bloco-topo">
-                            <span>Firecrawl (total)</span>
-                            <span id="uso-fc-texto">—</span>
-                        </div>
-                        <div class="uso-barra-fundo">
-                            <div id="uso-fc-barra" class="uso-barra"></div>
-                        </div>
+                    <div class="uso-barra-fundo">
+                        <div id="uso-tav-barra" class="uso-barra"></div>
                     </div>
-
-                    <div class="uso-bloco">
-                        <div class="uso-bloco-topo">
-                            <span>Imagens (hoje)</span>
-                            <span id="uso-cf-texto">—</span>
-                        </div>
-                        <div class="uso-barra-fundo">
-                            <div id="uso-cf-barra" class="uso-barra"></div>
-                        </div>
-                        <div id="uso-cf-legenda" class="uso-legenda"></div>
-                    </div>
-
-                    <p class="uso-nota">
-                        Contagem <strong>estimada</strong> feita por este app,
-                        não o saldo oficial de cada serviço.
-                    </p>
-
+                    <div id="uso-tav-reset" class="uso-legenda"></div>
                 </div>
+
+                <div class="uso-bloco">
+                    <div class="uso-bloco-topo">
+                        <span>Firecrawl (ciclo)</span>
+                        <span id="uso-fc-texto">—</span>
+                    </div>
+                    <div class="uso-barra-fundo">
+                        <div id="uso-fc-barra" class="uso-barra"></div>
+                    </div>
+                    <div id="uso-fc-reset" class="uso-legenda"></div>
+                </div>
+
+                <div class="uso-bloco">
+                    <div class="uso-bloco-topo">
+                        <span>Imagens (hoje)</span>
+                        <span id="uso-cf-texto">—</span>
+                    </div>
+                    <div class="uso-barra-fundo">
+                        <div id="uso-cf-barra" class="uso-barra"></div>
+                    </div>
+                    <div id="uso-cf-legenda" class="uso-legenda"></div>
+                </div>
+
+                <p class="uso-nota">
+                    Contagem <strong>estimada</strong> feita por este app,
+                    não o saldo oficial de cada serviço.
+                </p>
+
+            </div>
 
             <!-- SELETOR DE MODELO -->
             <div class="seletor-modo">

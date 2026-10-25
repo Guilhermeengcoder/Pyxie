@@ -13,6 +13,21 @@ const botaoLimpar = document.getElementById("limpar-tudo");
 const botaoMenu = document.getElementById("menu");
 const overlay = document.getElementById("overlay");
 
+
+// ========================================
+// ELEMENTOS DOS PROJETOS
+// ========================================
+
+const botaoAbrirProjetos = document.getElementById("abrir-projetos");
+const painelProjetos = document.getElementById("painel-projetos");
+const listaProjetos = document.getElementById("lista-projetos");
+const projetosVazio = document.getElementById("projetos-vazio");
+const botaoNovoProjeto = document.getElementById("novo-projeto");
+const botaoVoltarConversas = document.getElementById("voltar-conversas");
+
+let projetos = [];
+
+
 // Imagem, câmera e microfone
 const botaoAnexar = document.getElementById("anexar");
 const botaoCamera = document.getElementById("camera");
@@ -440,6 +455,154 @@ function renderizarLista() {
 }
 
 
+ // ========================================
+ // PROJETOS — CARREGAMENTO E LISTAGEM
+ // ========================================
+
+async function carregarProjetos() {
+    try {
+        const resposta = await apiFetch("/projetos");
+
+        if (!resposta.ok) {
+            throw new Error(
+                `Erro HTTP ${resposta.status} ao carregar projetos.`
+            );
+        }
+
+        const dados = await resposta.json();
+
+        console.log("Projetos recebidos da API:", dados);
+
+        if (!Array.isArray(dados)) {
+            throw new Error("A API retornou uma lista de projetos inválida.");
+        }
+
+        projetos = dados;
+        renderizarProjetos();
+
+    } catch (erro) {
+        console.error("Erro ao carregar projetos:", erro);
+        mostrarAviso("Não foi possível carregar os projetos.");
+    }
+}
+
+
+function renderizarProjetos() {
+    listaProjetos.innerHTML = "";
+
+    const existemProjetos = projetos.length > 0;
+    projetosVazio.hidden = existemProjetos;
+
+    projetos.forEach(projeto => {
+        const item = document.createElement("button");
+
+        item.type = "button";
+        item.classList.add("item-projeto");
+
+        const nome = String(projeto.nome || "Projeto sem nome");
+
+        item.textContent = nome;
+        item.title = nome;
+        item.dataset.projetoId = projeto.id;
+
+        item.style.color = "#ffffff";
+        item.style.backgroundColor = "#222222";
+        item.style.fontSize = "16px";
+        item.style.minHeight = "40px";
+
+        console.log("Botão de projeto criado:", {
+            nome: item.textContent,
+            cor: getComputedStyle(item).color,
+            visibilidade: getComputedStyle(item).visibility,
+            exibicao: getComputedStyle(item).display
+        });
+
+        item.addEventListener("click", () => {
+            mostrarAviso(
+                `O projeto "${nome}" será aberto na próxima etapa.`
+            );
+        });
+
+        listaProjetos.appendChild(item);
+
+        console.log("Diagnóstico visual:", {
+            painelOculto: painelProjetos.hidden,
+            painelAltura: painelProjetos.getBoundingClientRect().height,
+            listaAltura: listaProjetos.getBoundingClientRect().height,
+            botaoAltura: item.getBoundingClientRect().height,
+            botaoLargura: item.getBoundingClientRect().width,
+            texto: item.textContent,
+            html: item.outerHTML,
+            corTexto: getComputedStyle(item).color,
+            corFundo: getComputedStyle(item).backgroundColor,
+            tamanhoFonte: getComputedStyle(item).fontSize
+        });
+    });
+
+
+}
+
+
+
+
+
+async function criarProjeto() {
+    const nome = prompt("Qual será o nome do projeto?");
+
+    if (nome === null) {
+        return;
+    }
+
+    const nomeLimpo = nome.trim();
+
+    if (!nomeLimpo) {
+        mostrarAviso("Digite um nome para o projeto.");
+        return;
+    }
+
+    try {
+        const resposta = await apiFetch("/projetos", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                nome: nomeLimpo,
+                instrucoes: ""
+            })
+        });
+
+        let dados = {};
+
+        try {
+            dados = await resposta.json();
+        } catch (_) {
+            dados = {};
+        }
+
+        if (!resposta.ok) {
+            throw new Error(
+                dados.detail ||
+                dados.erro ||
+                `Erro HTTP ${resposta.status} ao criar projeto.`
+            );
+        }
+
+        mostrarAviso("Projeto criado com sucesso!");
+
+        await carregarProjetos();
+
+    } catch (erro) {
+        console.error("Erro ao criar projeto:", erro);
+        mostrarAviso(
+            erro.message || "Não foi possível criar o projeto."
+        );
+    }
+}
+
+
+
+
 // ========================================
 // SIDEBAR (ABRIR / FECHAR)
 // ========================================
@@ -447,6 +610,40 @@ function renderizarLista() {
 function estaNoCelular() {
     return window.matchMedia("(max-width: 800px)").matches;
 }
+
+
+ // ========================================
+ // NAVEGAÇÃO ENTRE CONVERSAS E PROJETOS
+ // ========================================
+
+function abrirPainelProjetos() {
+    painelProjetos.hidden = false;
+    lista.hidden = true;
+
+    botaoAbrirProjetos.setAttribute("aria-expanded", "true");
+
+    carregarProjetos();
+}
+
+function voltarParaConversas() {
+    painelProjetos.hidden = true;
+    lista.hidden = false;
+
+    botaoAbrirProjetos.setAttribute("aria-expanded", "false");
+}
+
+botaoAbrirProjetos.addEventListener("click", () => {
+    abrirPainelProjetos();
+});
+
+botaoVoltarConversas.addEventListener("click", () => {
+    voltarParaConversas();
+});
+
+botaoNovoProjeto.addEventListener("click", () => {
+    criarProjeto();
+});
+
 
 function alternarSidebar() {
     document.body.classList.toggle(
@@ -2462,15 +2659,20 @@ function pararContagemResetGemini() {
     geminiPrazo = null;
 }
 
-// 27120 s -> "reseta em 7h 32m"; 2400 s -> "reseta em 40m"
+// 27120 s -> "reseta em 7h 32m"; 2400 s -> "reseta em 40m";
+// 2600000 s -> "reseta em 30d 2h"
 function formatarResetDiario(segundos) {
     if (segundos <= 0) return "contador reiniciado";
     if (segundos < 60) return "reseta em menos de 1m";
 
     const minutos = Math.ceil(segundos / 60);
-    const h = Math.floor(minutos / 60);
+    const d = Math.floor(minutos / 1440);
+    const h = Math.floor((minutos % 1440) / 60);
     const m = minutos % 60;
 
+    if (d > 0) {
+        return "reseta em " + d + "d " + h + "h";
+    }
     if (h > 0) {
         return "reseta em " + h + "h " + String(m).padStart(2, "0") + "m";
     }
@@ -2709,6 +2911,13 @@ function atualizarServicos(todos) {
     if (elTavReset && todos.tavily) {
         elTavReset.textContent = Number.isFinite(todos.tavily.reset_s)
             ? formatarResetDiario(todos.tavily.reset_s)
+            : "";
+    }
+
+    const elFcReset = document.getElementById("uso-fc-reset");
+    if (elFcReset && todos.firecrawl) {
+        elFcReset.textContent = Number.isFinite(todos.firecrawl.reset_s)
+            ? formatarResetDiario(todos.firecrawl.reset_s)
             : "";
     }
 
@@ -3294,6 +3503,9 @@ carregarUsoInicial();
 
 // Marca no seletor o modo que o servidor está usando.
 carregarModo();
+
+// Carrega os projetos salvos no PostgreSQL.
+carregarProjetos();
 
 
 /* ========================================
