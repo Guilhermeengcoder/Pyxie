@@ -212,6 +212,8 @@ let cameraFrontal = false;
 
 let timerAviso = null;
 
+let respostaRecemChegada = false;
+
 
 // ========================================
 // ARMAZENAMENTO LOCAL
@@ -430,13 +432,23 @@ function renderizarLista() {
         const abrir = document.createElement("button");
         abrir.type = "button";
         abrir.classList.add("item-titulo");
-        abrir.textContent = conversa.titulo;
         abrir.title = conversa.titulo;
 
         abrir.addEventListener("click", () => {
             abrirConversa(conversa.id);
             fecharSidebarNoCelular();
         });
+
+        const icone = criarIcone(
+            grupo === "Hoje" || grupo === "Ontem" ? "chat" : "relogio"
+        );
+        icone.classList.add("item-icone");
+
+        const rotuloTitulo = document.createElement("span");
+        rotuloTitulo.classList.add("item-titulo-texto");
+        rotuloTitulo.textContent = conversa.titulo;
+
+        abrir.append(icone, rotuloTitulo);
 
         const apagar = document.createElement("button");
         apagar.type = "button";
@@ -1199,6 +1211,29 @@ function criarIcone(nome) {
         );
     }
 
+        if (nome === "info") {
+        svg.append(
+            criarElemento("circle", { cx: "12", cy: "12", r: "10" }),
+            criarElemento("path", { d: "M12 16v-4" }),
+            criarElemento("path", { d: "M12 8h.01" })
+        );
+    }
+
+    if (nome === "chat") {
+        svg.append(
+            criarElemento("path", {
+                d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+            })
+        );
+    }
+
+    if (nome === "relogio") {
+        svg.append(
+            criarElemento("circle", { cx: "12", cy: "12", r: "10" }),
+            criarElemento("polyline", { points: "12 6 12 12 16 14" })
+        );
+    }
+
     return svg;
 }
 
@@ -1382,6 +1417,13 @@ function renderizarTextoComCodigo(conteudo, destino) {
     let paragrafo = [];
     let listaAtual = null;
     let tabelaAtual = null;
+    let citacaoAtual = null;
+
+    function fecharCitacao() {
+        if (!citacaoAtual) return;
+        destino.appendChild(citacaoAtual);
+        citacaoAtual = null;
+    }
 
     function fecharParagrafo() {
         if (!paragrafo.length) return;
@@ -1419,9 +1461,10 @@ function renderizarTextoComCodigo(conteudo, destino) {
         fecharParagrafo();
         fecharLista();
         fecharTabela();
+        fecharCitacao();    
     }
 
-    function adicionarLinhaNaLista(linha, numerada) {
+        function adicionarLinhaNaLista(linha, numerada, numero) {
         fecharParagrafo();
         fecharTabela();
 
@@ -1440,6 +1483,11 @@ function renderizarTextoComCodigo(conteudo, destino) {
         }
 
         const item = document.createElement("li");
+
+        if (numerada && numero) {
+            item.dataset.n = numero;
+        }
+
         renderizarMarkdownInline(linha, item);
         listaAtual.appendChild(item);
     }
@@ -1519,7 +1567,7 @@ function renderizarTextoComCodigo(conteudo, destino) {
         const linha = linhas[i];
 
         // Blocos de código
-        const cerca = linha.match(/^ {0,3}```\s*([^`]*)$/);
+        const cerca = linha.match(/^\s*```\s*([^`]*)$/);
 
         if (cerca) {
             fecharBlocosTexto();
@@ -1549,6 +1597,37 @@ function renderizarTextoComCodigo(conteudo, destino) {
             linhasCodigo.push(linha);
             continue;
         }
+
+                // Aviso / dica: linhas começando com ">"
+        const citacao = linha.match(/^\s{0,3}>\s?(.*)$/);
+
+        if (citacao) {
+            fecharParagrafo();
+            fecharLista();
+            fecharTabela();
+
+            if (!citacaoAtual) {
+                citacaoAtual = document.createElement("div");
+                citacaoAtual.classList.add("aviso-resposta");
+
+                const corpo = document.createElement("div");
+                corpo.classList.add("aviso-resposta-texto");
+
+                citacaoAtual.append(criarIcone("info"), corpo);
+            } else {
+                citacaoAtual
+                    .querySelector(".aviso-resposta-texto")
+                    .appendChild(document.createElement("br"));
+            }
+
+            renderizarMarkdownInline(
+                citacao[1],
+                citacaoAtual.querySelector(".aviso-resposta-texto")
+            );
+            continue;
+        }
+
+        fecharCitacao();
 
         // Tabela Markdown: cabeçalho seguido por separador.
         if (
@@ -1601,11 +1680,11 @@ function renderizarTextoComCodigo(conteudo, destino) {
 
         // Listas numeradas
         const itemNumerado = linha.match(
-            /^\s{0,3}\d+[.)]\s+(.+)$/
+            /^\s{0,3}(\d+)[.)]\s+(.+)$/
         );
 
         if (itemNumerado) {
-            adicionarLinhaNaLista(itemNumerado[1], true);
+            adicionarLinhaNaLista(itemNumerado[2], true, itemNumerado[1]);
             continue;
         }
 
@@ -1802,11 +1881,13 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
 
     chat.appendChild(mensagem);
 
-    rolarParaOFim();
+    if (tipo !== "usuario" && opcoes.rolarParaTopo) {
+        // Resposta nova: fica no começo dela, para ler de cima para baixo.
+        mensagem.scrollIntoView({ block: "start" });
+    } else {
+        rolarParaOFim();
+    }
 }
-
-
-
 
 function renderizarMensagens() {
     chat.innerHTML = "";
@@ -1907,7 +1988,8 @@ function renderizarMensagens() {
         desenharMensagem(m.texto, m.tipo, m.miniatura, {
             permitirRegenerar: permitirRegenerar,
             conversaId: m.tipo === "pyxie" ? conversa.id : null,
-            imagemId: m.imagemId || null
+            imagemId: m.imagemId || null,
+            rolarParaTopo: ehUltimaMensagem && m.tipo === "pyxie" && respostaRecemChegada
         });
     });
 
@@ -2038,7 +2120,9 @@ async function regenerarResposta(conversaId) {
 
         // Atualiza a conversa que estiver aberta, sem trocar a seleção atual.
         if (conversaAtiva()) {
+            respostaRecemChegada = true;
             renderizarMensagens();
+            respostaRecemChegada = false;
         }
     }
 }
@@ -2917,12 +3001,14 @@ async function enviarMensagem() {
                 "pyxie"
             );
         }
-    } else if (aindaExiste) {
-        registrarMensagem(conversa, "pyxie", respostaTexto, null, imagemIdResposta);
+        } else if (aindaExiste) {
+            registrarMensagem(conversa, "pyxie", respostaTexto, null, imagemIdResposta);
 
         if (visivel) {
             // Redesenha para habilitar o botão de regeneração na última resposta.
+            respostaRecemChegada = true;
             renderizarMensagens();
+            respostaRecemChegada = false;
         }
     }
 
@@ -3308,6 +3394,12 @@ async function carregarUsoInicial() {
 
 if (botaoUso) {
     botaoUso.addEventListener("click", alternarPainelUso);
+}
+
+const botaoUsoFechar = document.getElementById("uso-fechar");
+
+if (botaoUsoFechar) {
+    botaoUsoFechar.addEventListener("click", alternarPainelUso);
 }
 
 if (overlayUso) {

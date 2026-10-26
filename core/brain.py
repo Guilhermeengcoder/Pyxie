@@ -10,6 +10,7 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from core import grafico
 from core import cloudflare_imagem
 from core.language import traduzir_para_ingles
 from core import firecrawl_scrape, llm_config
@@ -208,6 +209,53 @@ def perguntar_llm_seguro(pergunta, contexto):
         print(f"[LLM] {erro}")
         return None
     
+def comentar_grafico(spec: dict, contexto: str):
+    """Comentário curto sobre os dados do gráfico. None se o modelo falhar."""
+    rotulos = [str(r) for r in spec["rotulos"]]
+    valores = [float(v) for v in spec["valores"]]
+    un = str(spec.get("unidade", "")).strip()
+    tipo = str(spec.get("tipo", "barras")).lower()
+
+    total = sum(valores)
+    i_max = valores.index(max(valores))
+    i_min = valores.index(min(valores))
+
+    fatos = [
+        f"Título: {spec.get('titulo', '')}",
+        "Dados: " + "; ".join(f"{r} = {v:g} {un}".strip() for r, v in zip(rotulos, valores)),
+        f"Total: {total:g} {un}".strip(),
+        f"Maior: {rotulos[i_max]} ({valores[i_max]:g} {un}".strip() + ")",
+        f"Menor: {rotulos[i_min]} ({valores[i_min]:g} {un}".strip() + ")",
+    ]
+    if total > 0:
+        fatos.append(f"O maior valor representa {valores[i_max] / total * 100:.0f}% do total")
+    if tipo == "linha" and len(valores) > 1 and valores[0] != 0:
+        var = (valores[-1] - valores[0]) / abs(valores[0]) * 100
+        fatos.append(f"Variação do primeiro ao último ponto: {var:+.0f}%")
+
+    instrucao = (
+        "Acabei de mostrar à pessoa um gráfico feito com os dados dela. "
+        "Comente em 2 a 4 frases curtas, de forma natural e útil, o que os "
+        "números mostram (destaques, proporções, algo que chame atenção). "
+        "Use SOMENTE os fatos abaixo, sem inventar números nem fazer outras contas. "
+        "Não repita a lista de dados, não cumprimente e não escreva marcações [[...]].\n\n"
+        + "\n".join(fatos)
+    )
+
+    try:
+        texto = perguntar_llm(
+            instrucao,
+            contexto or "(conversa em andamento, sem cumprimentos)",
+            leve=True,
+        )
+    except ErroLLM as erro:
+        print(f"[Gráfico/comentário] {erro}")
+        return None
+
+    texto = FERRAMENTA.sub("", texto or "")
+    texto = re.sub(r"\s*【[^】]*】", "", texto).strip()
+    return texto or None
+    
 def preparar_prompt_imagem(descricao: str) -> str:
     """Pedido em português -> prompt em inglês para o SDXL.
 
@@ -277,6 +325,11 @@ PADRAO_IMAGEM = re.compile(
     rf"(?:^|[\s,.;!?])(?:(?:me|pra\s+mim|para\s+mim)\s+)?{VERBOS_IMAGEM}\s+"
     rf"(?:uma?\s+)?{SUBSTANTIVO_IMAGEM}\s*"
     r"(?:de|do|da|com|d[eo]s?)?\s*(.+)$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+FERRAMENTA = re.compile(
+    r"\[\[\s*(pesquisar|imagem|grafico)\s*:\s*(.+?)\s*\]\]",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -495,6 +548,7 @@ class Brain:
         mensagem_para_ia: str,
         original_message: str,
         extenso: bool = False,
+        ferramentas: bool = False,
     ):
         contexto_stm = sessao.stm.get_context_seletivo()
         contexto_extra = sessao.context.get_entity() or ""
@@ -552,6 +606,57 @@ class Brain:
             print(f"[ERRO LLM no fallback]: {erro}")
             response = None
             erro_llm = erro
+            
+        if ferramentas and isinstance(response, str):
+            achado = FERRAMENTA.search(response)
+            if achado:
+                acao = achado.group(1).lower()
+                pedido = achado.group(2).strip()
+
+                if acao == "imagem":
+                    return self._gerar_imagem(sessao, mensagem_original, pedido)
+                
+                if acao == "grafico":
+                    texto = "Não consegui montar o gráfico com esses dados."
+                    try:
+                        spec = json.loads(pedido)
+                        resultado = grafico.gerar(spec)
+                        sessao.imagem_pendente = resultado["id"]
+                        texto = (
+                            comentar_grafico(spec, contexto_final)
+                            or "Pronto, aqui está o gráfico."
+                        )
+                    except (ValueError, KeyError, TypeError, ErroLLM) as erro:
+                        print(f"[Gráfico] {erro}")
+
+                    resposta_final = self.personality.aplicar(texto)
+                    sessao.regeneracao_pergunta = None
+                    self._finalizar(sessao, mensagem_original, resposta_final)
+                    return resposta_final
+
+                resposta_web = self._responder_com_busca(
+                    sessao, mensagem_original, mensagem_para_ia,
+                    original_message, consulta=pedido,
+                )
+                if resposta_web:
+                    return resposta_web
+
+                # A busca falhou: responde sem ela, avisando.
+                try:
+                    response = perguntar_llm(
+                        mensagem_para_ia
+                        + "\n\n(A busca na web não funcionou agora. Responda com o "
+                        "que você sabe e avise que não conseguiu confirmar online.)",
+                        contexto_final,
+                        memoria_fixa=memoria_fixa_txt,
+                    )
+                except Exception as erro:
+                    erro_llm = erro
+                    response = None
+
+        # Nunca deixa a marcação vazar para o usuário.
+        if isinstance(response, str):
+            response = FERRAMENTA.sub("", response)
 
         if isinstance(response, str) and response.strip():
             response = re.sub(r"\s*【[^】]*】", "", response).strip()
@@ -581,15 +686,16 @@ class Brain:
     # ----------------------------------------------------------
 
     def _responder_com_busca(
-        self, sessao, mensagem_original, mensagem_para_ia, original_message
+        self, sessao, mensagem_original, mensagem_para_ia, original_message,
+        consulta=None,
     ):
-        """Devolve a resposta, ou None para seguir o fluxo normal."""
-        consulta = re.sub(
-            r"^\s*(?:pesquise|procure|busque)\s+(?:(?:sobre|por)\s+)?",
-            "",
-            mensagem_para_ia,
-            flags=re.IGNORECASE,
-        ).strip()
+        if consulta is None:
+            consulta = re.sub(
+                r"^\s*(?:pesquise|procure|busque)\s+(?:(?:sobre|por)\s+)?",
+                "",
+                mensagem_para_ia,
+                flags=re.IGNORECASE,
+            ).strip()
 
         if not consulta:
             return None
@@ -704,15 +810,15 @@ class Brain:
     # ----------------------------------------------------------
 
     def _responder_com_imagem(self, sessao, mensagem_original, mensagem_para_ia):
-        """Gera a imagem se a mensagem pedir uma. None se não for o caso."""
         achado = PADRAO_IMAGEM.search(mensagem_para_ia)
         if not achado:
             return None
-
         descricao = achado.group(1).strip()
         if not descricao:
             return None
+        return self._gerar_imagem(sessao, mensagem_original, descricao)
 
+    def _gerar_imagem(self, sessao, mensagem_original, descricao):
         if detectar_segredos(descricao):
             texto = (
                 "Seu pedido parece ter uma senha ou chave de acesso, "
@@ -738,7 +844,6 @@ class Brain:
                 )
 
         resposta_final = self.personality.aplicar(texto)
-        # Não deixa o botão "regenerar" refazer texto por cima da imagem.
         sessao.regeneracao_pergunta = None
         self._finalizar(sessao, mensagem_original, resposta_final)
         return resposta_final
@@ -774,7 +879,7 @@ class Brain:
         # Mantém a mensagem original na memória de conversa.
         sessao.stm.add_message("user", mensagem_original)
         sessao.context.add_message(mensagem_original)
-
+        
         # ------------------------------------------------------
         # CONTEÚDO EXTENSO (código, prompts, textos longos)
         # Vai direto ao LLM: sem atalhos, sem respostas fixas
@@ -1056,6 +1161,7 @@ class Brain:
             mensagem_para_ia,
             original_message,
             extenso=False,
+            ferramentas=True,
         )
 
     # ----------------------------------------------------------

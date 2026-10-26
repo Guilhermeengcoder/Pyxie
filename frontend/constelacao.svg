@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+  <g fill="none" stroke="#ff4d6d" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.55">
+    <!-- esquerda -->
+    <polyline points="60,110 170,190 130,320 250,370 160,480 70,590 210,650"/>
+    <polyline points="170,190 290,120 360,230 250,370"/>
+    <polyline points="160,480 300,520 250,370"/>
+    <polyline points="300,520 340,640 210,650"/>
+    <!-- direita -->
+    <polyline points="1130,90 1020,180 1100,290 1000,380 1120,470 1030,570 1130,670"/>
+    <polyline points="1020,180 900,120 850,240 1000,380"/>
+    <polyline points="1120,470 960,500 1000,380"/>
+    <polyline points="960,500 910,640 1030,570"/>
+  </g>
+  <g fill="#ff7d96">
+    <circle cx="60" cy="110" r="2.5"/><circle cx="170" cy="190" r="3.5"/>
+    <circle cx="130" cy="320" r="2.5"/><circle cx="250" cy="370" r="3.5"/>
+    <circle cx="160" cy="480" r="2.5"/><circle cx="70" cy="590" r="2"/>
+    <circle cx="210" cy="650" r="3"/><circle cx="290" cy="120" r="2"/>
+    <circle cx="360" cy="230" r="2.5"/><circle cx="300" cy="520" r="3"/>
+    <circle cx="340" cy="640" r="2"/>
+    <circle cx="1130" cy="90" r="2.5"/><circle cx="1020" cy="180" r="3.5"/>
+    <circle cx="1100" cy="290" r="2.5"/><circle cx="1000" cy="380" r="3.5"/>
+    <circle cx="1120" cy="470" r="2.5"/><circle cx="1030" cy="570" r="2"/>
+    <circle cx="1130" cy="670" r="3"/><circle cx="900" cy="120" r="2"/>
+    <circle cx="850" cy="240" r="2.5"/><circle cx="960" cy="500" r="3"/>
+    <circle cx="910" cy="640" r="2"/>
+  </g>
+</svg>

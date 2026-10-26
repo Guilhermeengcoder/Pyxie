@@ -16,6 +16,14 @@
         <!-- HISTÓRICO DE CONVERSAS E PROJETOS -->
         <aside class="sidebar" id="sidebar" aria-label="Histórico de conversas">
 
+            <div class="sidebar-marca">
+    <img src="fairy-tail.png" alt="" width="40" height="40">
+    <div class="sidebar-marca-texto">
+        <small>VERSÃO</small>
+        <b>4.6</b>
+    </div>
+</div>
+
             <div class="sidebar-topo">
 
 
@@ -62,8 +70,15 @@
 
             <div class="sidebar-rodape">
                 <button id="limpar-tudo" class="btn-limpar" type="button">
-                    Limpar histórico
-                </button>
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+        <path d="M10 11v6M14 11v6" />
+        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+    Limpar histórico
+</button>
             </div>
 
         </aside>
@@ -87,7 +102,7 @@
 
                 <div class="chat-titulo">
                     <h1>
-                        PYXIE <span class="versao-pyxie">4.5</span>
+                        PYXIE <span class="versao-pyxie"></span>
                     </h1>
                     <p class="subtitulo-pyxie">
                         INTELIGÊNCIA · CRIATIVIDADE · CONEXÃO
@@ -246,8 +261,21 @@
             aria-label="Uso da API">
 
             <div class="uso-cabecalho">
-                <h2>Uso da API</h2>
-            </div>
+    <div class="uso-cabecalho-topo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 20h18M6 20V10M12 20V4M18 20v-7" />
+        </svg>
+        <h2>Uso da API</h2>
+        <button id="uso-fechar" class="btn-icone" type="button" aria-label="Recolher painel">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" />
+            </svg>
+        </button>
+    </div>
+    <p class="uso-subtitulo">Acompanhe o consumo dos serviços e saldo da sua sessão.</p>
+</div>
 
             <div id="uso-vazio" class="uso-vazio">
                 Ainda não há dados de uso nesta sessão do servidor.
@@ -374,10 +402,14 @@
                     <div id="uso-cf-legenda" class="uso-legenda"></div>
                 </div>
 
-                <p class="uso-nota">
-                    Contagem <strong>estimada</strong> feita por este app,
-                    não o saldo oficial de cada serviço.
-                </p>
+                <p class="uso-nota uso-nota-icone">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+    </svg>
+    <span>Contagem <strong>estimada</strong> feita por este app,
+    não o saldo oficial de cada serviço.</span>
+</p>
 
             </div>
 
