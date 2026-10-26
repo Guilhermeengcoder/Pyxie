@@ -314,3 +314,16 @@ def listar_mensagens_projeto(
     )
 
     return resultado or []
+
+def listar_arquivos_com_conteudo(projeto_id: int):
+    """Nome e conteúdo de todos os arquivos do projeto (para montar o contexto da IA)."""
+    resultado = executar(
+        """
+        SELECT nome, conteudo
+        FROM projeto_arquivos
+        WHERE projeto_id = %s
+        ORDER BY nome
+        """,
+        (projeto_id,),
+    )
+    return resultado or []

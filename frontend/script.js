@@ -270,10 +270,12 @@ function conversaAtiva() {
 
 function novaConversa() {
     // Reaproveita uma conversa vazia em vez de empilhar várias
-    const vazia = estado.conversas.find(c => c.mensagens.length === 0);
+    const vazia = estado.conversas.find(
+        c => c.mensagens.length === 0 && !c.projetoId
+    );
 
     if (vazia) {
-        vazia.atualizadaEm = Date.now();
+        vazia.atualizadaEm = Date.now(); 
 
         prepararTelaInicial(vazia);
 
@@ -405,7 +407,7 @@ function renderizarLista() {
 
     let grupoAtual = null;
 
-    estado.conversas.forEach(conversa => {
+    estado.conversas.filter(c => !c.projetoId).forEach(conversa => {
         const grupo = rotuloDoGrupo(conversa.atualizadaEm);
 
         if (grupo !== grupoAtual) {
@@ -490,60 +492,458 @@ async function carregarProjetos() {
 function renderizarProjetos() {
     listaProjetos.innerHTML = "";
 
-    const existemProjetos = projetos.length > 0;
-    projetosVazio.hidden = existemProjetos;
+    projetosVazio.hidden = projetos.length > 0;
 
     projetos.forEach(projeto => {
-        const item = document.createElement("button");
-
-        item.type = "button";
-        item.classList.add("item-projeto");
-
         const nome = String(projeto.nome || "Projeto sem nome");
 
-        item.textContent = nome;
-        item.title = nome;
-        item.dataset.projetoId = projeto.id;
+        const linha = document.createElement("div");
+        linha.classList.add("linha-projeto");
 
-        item.style.color = "#ffffff";
-        item.style.backgroundColor = "#222222";
-        item.style.fontSize = "16px";
-        item.style.minHeight = "40px";
+        const abrir = document.createElement("button");
+        abrir.type = "button";
+        abrir.classList.add("item-projeto");
+        abrir.textContent = nome;
+        abrir.title = nome;
+        abrir.dataset.projetoId = projeto.id;
+        abrir.addEventListener("click", () => abrirProjeto(projeto));
 
-        console.log("Botão de projeto criado:", {
-            nome: item.textContent,
-            cor: getComputedStyle(item).color,
-            visibilidade: getComputedStyle(item).visibility,
-            exibicao: getComputedStyle(item).display
-        });
+        const editar = document.createElement("button");
+        editar.type = "button";
+        editar.classList.add("projeto-acao");
+        editar.textContent = "✎";
+        editar.title = "Editar projeto";
+        editar.setAttribute("aria-label", "Editar projeto: " + nome);
+        editar.addEventListener("click", () => abrirEditorProjeto(projeto));
 
-        item.addEventListener("click", () => {
-            mostrarAviso(
-                `O projeto "${nome}" será aberto na próxima etapa.`
-            );
-        });
+        const apagar = document.createElement("button");
+        apagar.type = "button";
+        apagar.classList.add("projeto-acao", "projeto-acao-apagar");
+        apagar.textContent = "×";
+        apagar.title = "Excluir projeto";
+        apagar.setAttribute("aria-label", "Excluir projeto: " + nome);
+        apagar.addEventListener("click", () => excluirProjeto(projeto));
 
-        listaProjetos.appendChild(item);
-
-        console.log("Diagnóstico visual:", {
-            painelOculto: painelProjetos.hidden,
-            painelAltura: painelProjetos.getBoundingClientRect().height,
-            listaAltura: listaProjetos.getBoundingClientRect().height,
-            botaoAltura: item.getBoundingClientRect().height,
-            botaoLargura: item.getBoundingClientRect().width,
-            texto: item.textContent,
-            html: item.outerHTML,
-            corTexto: getComputedStyle(item).color,
-            corFundo: getComputedStyle(item).backgroundColor,
-            tamanhoFonte: getComputedStyle(item).fontSize
-        });
+        linha.append(abrir, editar, apagar);
+        listaProjetos.appendChild(linha);
     });
-
-
 }
 
 
+async function abrirProjeto(projeto) {
+    if (pendenteId) {
+        return;
+    }
 
+    try {
+        const resposta = await apiFetch(
+            `/projetos/${projeto.id}/mensagens?limite=100`
+        );
+
+        if (!resposta.ok) {
+            throw new Error(`Erro HTTP ${resposta.status}`);
+        }
+
+        const registros = await resposta.json();
+
+        let conversa = estado.conversas.find(c => c.projetoId === projeto.id);
+
+        if (!conversa) {
+            const agora = Date.now();
+
+            conversa = {
+                id: criarId(),
+                titulo: projeto.nome,
+                criadaEm: agora,
+                atualizadaEm: agora,
+                mensagens: [],
+                diaTelaInicial: null,
+                projetoId: projeto.id
+            };
+
+            estado.conversas.unshift(conversa);
+        }
+
+        conversa.titulo = projeto.nome;
+
+        // O banco é a fonte da verdade do histórico do projeto.
+        conversa.mensagens = registros.map(m => ({
+            tipo: m.papel === "user" ? "usuario" : "pyxie",
+            texto: m.conteudo
+        }));
+
+        abrirConversa(conversa.id);
+        fecharSidebarNoCelular();
+
+    } catch (erro) {
+        console.error("Erro ao abrir projeto:", erro);
+        mostrarAviso("Não foi possível abrir o projeto.");
+    }
+}
+
+
+// ========================================
+// PROJETOS — EDITAR E EXCLUIR
+// ========================================
+
+function fecharEditorProjeto() {
+    const modal = document.getElementById("editor-projeto");
+
+    if (modal) {
+        modal.remove();
+    }
+
+    document.removeEventListener("keydown", tratarTeclaEditorProjeto);
+}
+
+function tratarTeclaEditorProjeto(evento) {
+    if (evento.key === "Escape") {
+        fecharEditorProjeto();
+    }
+}
+
+function abrirEditorProjeto(projeto) {
+    fecharEditorProjeto();
+
+    const fundo = document.createElement("div");
+    fundo.id = "editor-projeto";
+    fundo.classList.add("editor-projeto-fundo");
+
+    const painel = document.createElement("div");
+    painel.classList.add("editor-projeto-painel");
+    painel.setAttribute("role", "dialog");
+    painel.setAttribute("aria-modal", "true");
+    painel.setAttribute("aria-labelledby", "editor-projeto-titulo");
+
+    const titulo = document.createElement("h2");
+    titulo.id = "editor-projeto-titulo";
+    titulo.textContent = "Editar projeto";
+
+    const rotuloNome = document.createElement("label");
+    rotuloNome.textContent = "Nome";
+    rotuloNome.htmlFor = "editor-projeto-nome";
+
+    const campoNome = document.createElement("input");
+    campoNome.id = "editor-projeto-nome";
+    campoNome.type = "text";
+    campoNome.maxLength = 80;
+    campoNome.value = projeto.nome || "";
+
+    const rotuloInstrucoes = document.createElement("label");
+    rotuloInstrucoes.textContent = "Instruções da PYXIE neste projeto";
+    rotuloInstrucoes.htmlFor = "editor-projeto-instrucoes";
+
+    const campoInstrucoes = document.createElement("textarea");
+    campoInstrucoes.id = "editor-projeto-instrucoes";
+    campoInstrucoes.rows = 8;
+    campoInstrucoes.maxLength = 4000;
+    campoInstrucoes.placeholder =
+        "Ex.: Responda como professor de matemática, com exemplos curtos.";
+    campoInstrucoes.value = projeto.instrucoes || "";
+
+    const dica = document.createElement("p");
+    dica.classList.add("editor-projeto-dica");
+    dica.textContent =
+        "Estas instruções vão em toda mensagem do projeto e gastam tokens. " +
+        "Quanto mais curtas, mais mensagens cabem na cota do dia.";
+
+        // ----- Arquivos de conhecimento -----
+    const rotuloArquivos = document.createElement("label");
+    rotuloArquivos.textContent = "Arquivos de conhecimento";
+
+    const listaArquivos = document.createElement("div");
+    listaArquivos.classList.add("editor-arquivos");
+
+    const inputArquivos = document.createElement("input");
+    inputArquivos.type = "file";
+    inputArquivos.multiple = true;
+    inputArquivos.accept = ".txt,.md,.py,.js,.json,.csv,.html,.css,.sql,.yml,.yaml,.ini,.log";
+    inputArquivos.hidden = true;
+
+    const botaoEnviar = document.createElement("button");
+    botaoEnviar.type = "button";
+    botaoEnviar.classList.add("camera-btn");
+    botaoEnviar.textContent = "+ Adicionar arquivos";
+    botaoEnviar.addEventListener("click", () => inputArquivos.click());
+
+    const avisoArquivos = document.createElement("p");
+    avisoArquivos.classList.add("editor-projeto-dica");
+    avisoArquivos.textContent =
+        "Só texto e código (até 100 KB cada). A PYXIE lê os primeiros 3.000 " +
+        "caracteres de cada arquivo, até 8.000 no total.";
+
+    async function carregarArquivosDoProjeto() {
+        try {
+            const r = await apiFetch(`/projetos/${projeto.id}/arquivos`);
+            if (!r.ok) throw new Error(`Erro HTTP ${r.status}`);
+            desenharArquivos(await r.json());
+        } catch (e) {
+            listaArquivos.textContent = "Não foi possível listar os arquivos.";
+        }
+    }
+
+    function desenharArquivos(arquivos) {
+        listaArquivos.innerHTML = "";
+
+        if (!arquivos.length) {
+            const vazio = document.createElement("p");
+            vazio.classList.add("editor-projeto-dica");
+            vazio.textContent = "Nenhum arquivo ainda.";
+            listaArquivos.appendChild(vazio);
+            return;
+        }
+
+        arquivos.forEach(arq => {
+            const linha = document.createElement("div");
+            linha.classList.add("editor-arquivo-linha");
+
+            const nomeArq = document.createElement("span");
+            nomeArq.textContent = arq.nome;
+            nomeArq.title = arq.nome;
+
+            const remover = document.createElement("button");
+            remover.type = "button";
+            remover.classList.add("projeto-acao", "projeto-acao-apagar");
+            remover.textContent = "×";
+            remover.title = "Remover arquivo";
+            remover.setAttribute("aria-label", "Remover " + arq.nome);
+            remover.style.opacity = "1";
+
+            remover.addEventListener("click", async () => {
+                if (!confirm(`Remover "${arq.nome}" do projeto?`)) return;
+
+                try {
+                    const r = await apiFetch(
+                        `/projetos/${projeto.id}/arquivos/${encodeURIComponent(arq.nome)}`,
+                        { method: "DELETE" }
+                    );
+                    if (!r.ok) throw new Error(`Erro HTTP ${r.status}`);
+                    carregarArquivosDoProjeto();
+                } catch (e) {
+                    erro.textContent = e.message || "Não foi possível remover.";
+                    erro.hidden = false;
+                }
+            });
+
+            linha.append(nomeArq, remover);
+            listaArquivos.appendChild(linha);
+        });
+    }
+
+    inputArquivos.addEventListener("change", async () => {
+        const escolhidos = Array.from(inputArquivos.files);
+        inputArquivos.value = "";
+        erro.hidden = true;
+
+        const problemas = [];
+
+        for (const arquivo of escolhidos) {
+            if (arquivo.size > 100 * 1024) {
+                problemas.push(`${arquivo.name}: passa de 100 KB.`);
+                continue;
+            }
+
+            try {
+                const conteudo = await arquivo.text();
+
+                // Arquivo binário vira caracteres de substituição.
+                if (conteudo.includes("\uFFFD") || conteudo.includes("\u0000")) {
+                    problemas.push(`${arquivo.name}: não parece ser texto.`);
+                    continue;
+                }
+
+                const r = await apiFetch(`/projetos/${projeto.id}/arquivos`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ nome: arquivo.name, conteudo })
+                });
+
+                if (!r.ok) {
+                    let detalhe = "";
+                    try { detalhe = (await r.json()).detail || ""; } catch (_) { }
+                    problemas.push(`${arquivo.name}: ${detalhe || "erro " + r.status}`);
+                }
+            } catch (e) {
+                problemas.push(`${arquivo.name}: falha ao ler.`);
+            }
+        }
+
+        if (problemas.length) {
+            erro.textContent = problemas.join(" ");
+            erro.hidden = false;
+        }
+
+        carregarArquivosDoProjeto();
+    });
+
+    carregarArquivosDoProjeto();    
+
+    const erro = document.createElement("p");
+    erro.classList.add("editor-projeto-erro");
+    erro.hidden = true;
+
+    const acoes = document.createElement("div");
+    acoes.classList.add("editor-projeto-acoes");
+
+    const cancelar = document.createElement("button");
+    cancelar.type = "button";
+    cancelar.classList.add("camera-btn");
+    cancelar.textContent = "Cancelar";
+    cancelar.addEventListener("click", fecharEditorProjeto);
+
+    const salvar = document.createElement("button");
+    salvar.type = "button";
+    salvar.classList.add("camera-btn", "camera-btn-principal");
+    salvar.textContent = "Salvar";
+
+    salvar.addEventListener("click", async () => {
+        const nome = campoNome.value.trim();
+
+        if (!nome) {
+            erro.textContent = "O nome não pode ficar vazio.";
+            erro.hidden = false;
+            campoNome.focus();
+            return;
+        }
+
+        salvar.disabled = true;
+        salvar.textContent = "Salvando...";
+        erro.hidden = true;
+
+        try {
+            const resposta = await apiFetch(`/projetos/${projeto.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    nome: nome,
+                    instrucoes: campoInstrucoes.value
+                })
+            });
+
+            let dados = {};
+            try { dados = await resposta.json(); } catch (_) { }
+
+            if (!resposta.ok) {
+                throw new Error(
+                    dados.detail || `Erro HTTP ${resposta.status}`
+                );
+            }
+
+            // Atualiza a lista local e o título da conversa do projeto.
+            const indice = projetos.findIndex(p => p.id === projeto.id);
+            if (indice >= 0) {
+                projetos[indice] = dados;
+            }
+
+            const conversa = estado.conversas.find(
+                c => c.projetoId === projeto.id
+            );
+            if (conversa) {
+                conversa.titulo = dados.nome;
+                salvarEstado();
+            }
+
+            renderizarProjetos();
+            renderizarLista();
+            fecharEditorProjeto();
+            mostrarAviso("Projeto atualizado!", 3000, "info");
+
+        } catch (e) {
+            console.error("Erro ao salvar projeto:", e);
+            erro.textContent = e.message || "Não foi possível salvar.";
+            erro.hidden = false;
+            salvar.disabled = false;
+            salvar.textContent = "Salvar";
+        }
+    });
+
+    acoes.append(cancelar, salvar);
+
+    painel.append(
+        titulo,
+        rotuloNome, campoNome,
+        rotuloInstrucoes, campoInstrucoes,
+        dica,
+        rotuloArquivos, listaArquivos, botaoEnviar, inputArquivos, avisoArquivos,
+        erro, acoes
+    );
+
+    fundo.appendChild(painel);
+
+    fundo.addEventListener("click", evento => {
+        if (evento.target === fundo) {
+            fecharEditorProjeto();
+        }
+    });
+
+    document.body.appendChild(fundo);
+    document.addEventListener("keydown", tratarTeclaEditorProjeto);
+
+    campoNome.focus();
+}
+
+
+async function excluirProjeto(projeto) {
+    if (pendenteId) {
+        mostrarAviso("Aguarde a resposta terminar antes de excluir.");
+        return;
+    }
+
+    const nome = String(projeto.nome || "Projeto sem nome");
+
+    if (!confirm(
+        `Excluir o projeto "${nome}"?\n\n` +
+        "O histórico e os arquivos dele serão apagados do banco. " +
+        "Não dá para desfazer."
+    )) {
+        return;
+    }
+
+    try {
+        const resposta = await apiFetch(`/projetos/${projeto.id}`, {
+            method: "DELETE"
+        });
+
+        if (!resposta.ok) {
+            let detalhe = "";
+            try { detalhe = (await resposta.json()).detail || ""; } catch (_) { }
+            throw new Error(detalhe || `Erro HTTP ${resposta.status}`);
+        }
+
+        projetos = projetos.filter(p => p.id !== projeto.id);
+
+        const ativaEraDoProjeto = estado.conversas.some(
+            c => c.projetoId === projeto.id && c.id === estado.ativa
+        );
+
+        estado.conversas = estado.conversas.filter(
+            c => c.projetoId !== projeto.id
+        );
+
+        renderizarProjetos();
+
+        if (ativaEraDoProjeto) {
+            estado.ativa = null;
+
+            const outra = estado.conversas.find(c => !c.projetoId);
+
+            if (outra) {
+                abrirConversa(outra.id);
+            } else {
+                novaConversa();
+            }
+        } else {
+            salvarEstado();
+            renderizarLista();
+        }
+
+        mostrarAviso("Projeto excluído.", 3000, "info");
+
+    } catch (erro) {
+        console.error("Erro ao excluir projeto:", erro);
+        mostrarAviso(erro.message || "Não foi possível excluir o projeto.");
+    }
+}
 
 
 async function criarProjeto() {
@@ -1489,7 +1889,7 @@ function renderizarMensagens() {
         chat.appendChild(tela);
     }
 
-    conversa.mensagens.forEach((m, indice) => {
+        conversa.mensagens.forEach((m, indice) => {
         const ehUltimaMensagem =
             indice === conversa.mensagens.length - 1;
 
@@ -1498,6 +1898,7 @@ function renderizarMensagens() {
             .some(anterior => anterior.tipo === "usuario");
 
         const permitirRegenerar =
+            !conversa.projetoId &&
             ehUltimaMensagem &&
             m.tipo === "pyxie" &&
             !m.imagemId &&
@@ -2391,6 +2792,11 @@ async function enviarMensagem() {
         return;
     }
 
+    if (conversa.projetoId && imagem) {
+    mostrarAviso("Imagens ainda não são suportadas dentro de projetos.");
+    return;
+    }
+
     // Define o título apenas na primeira mensagem da conversa.
     if (
         conversa.mensagens.length === 0 &&
@@ -2439,21 +2845,31 @@ async function enviarMensagem() {
     let imagemIdResposta = null;   // declare junto de respostaTexto/deuErro
 
     try {
-        const resposta = await apiFetch("/perguntar", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
+        const url = conversa.projetoId
+            ? `/projetos/${conversa.projetoId}/perguntar`
+            : "/perguntar";
+
+        const corpo = conversa.projetoId
+            ? { mensagem: texto }
+            : {
                 mensagem: texto,
                 chat_id: conversa.id,
                 historico: historico,
                 imagem: imagem ? imagem.dataUrl : null
-            })
+            };
+
+        const resposta = await apiFetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(corpo)
         });
 
         if (!resposta.ok) {
-            throw new Error(`Erro HTTP: ${resposta.status}`);
+            let detalhe = "";
+            try { detalhe = (await resposta.json()).detail || ""; } catch (_) { }
+            throw new Error(detalhe || `Erro HTTP: ${resposta.status}`);
         }
 
         const dados = await resposta.json();
@@ -2806,6 +3222,30 @@ function atualizarPainelGroq(uso) {
             elPedidosBarra,
             uso.requests_restantes,
             uso.requests_limite
+        );
+    }
+
+    const elTokDiaTexto = document.getElementById("uso-tokdia-texto");
+    const elTokDiaFundo = document.getElementById("uso-tokdia-fundo");
+    const elTokDiaBarra = document.getElementById("uso-tokdia-barra");
+
+    const temLimiteDia =
+        Number.isFinite(uso.tokens_dia_limite) && uso.tokens_dia_limite > 0;
+
+    if (elTokDiaTexto) {
+        elTokDiaTexto.textContent = temLimiteDia
+            ? formatarNumero(uso.tokens_dia_usados) + " / " +
+              formatarNumero(uso.tokens_dia_limite)
+            : formatarNumero(uso.tokens_dia_usados);
+    }
+
+    if (elTokDiaFundo) elTokDiaFundo.hidden = !temLimiteDia;
+
+    if (elTokDiaBarra && temLimiteDia) {
+        atualizarBarra(
+            elTokDiaBarra,
+            uso.tokens_dia_restantes,
+            uso.tokens_dia_limite
         );
     }
 }

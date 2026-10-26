@@ -3480,3 +3480,215 @@ button:focus-visible {
     outline-offset: 3px;
 }
 
+.item-projeto {
+    width: 100%;
+    min-height: 42px;
+    padding: 10px 14px;
+
+    border: 1px solid var(--px-border, #302a33);
+    border-radius: 10px;
+
+    background: rgba(255, 255, 255, 0.025);
+    color: #e8e4eb;
+
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.item-projeto:hover {
+    background: rgba(169, 14, 43, 0.15);
+    border-color: rgba(240, 45, 80, 0.4);
+}
+
+/* ================================
+   PROJETOS — LINHA, AÇÕES E EDITOR
+================================ */
+
+.linha-projeto {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.linha-projeto .item-projeto {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+}
+
+.projeto-acao {
+    flex-shrink: 0;
+    width: 34px;
+
+    border: 1px solid transparent;
+    border-radius: 10px;
+
+    background: transparent;
+    color: var(--texto-suave);
+
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+
+    opacity: 0.55;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.linha-projeto:hover .projeto-acao,
+.projeto-acao:focus-visible {
+    opacity: 1;
+}
+
+.projeto-acao:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--texto);
+}
+
+.projeto-acao-apagar:hover {
+    color: #ff6b6b;
+}
+
+.editor-projeto-fundo {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 16px;
+
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+}
+
+.editor-projeto-painel {
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    max-height: 90dvh;
+    overflow-y: auto;
+
+    padding: 22px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    border: 1px solid #333;
+    border-radius: 16px;
+
+    background: #080808;
+    color: var(--texto);
+
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.editor-projeto-painel h2 {
+    margin-bottom: 6px;
+    font-size: 19px;
+    font-weight: 650;
+}
+
+.editor-projeto-painel label {
+    margin-top: 6px;
+    color: var(--texto-suave);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.editor-projeto-painel input,
+.editor-projeto-painel textarea {
+    width: 100%;
+    padding: 10px 12px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 10px;
+
+    background: var(--bg-input);
+    color: var(--texto);
+
+    font: inherit;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.editor-projeto-painel textarea {
+    resize: vertical;
+    min-height: 120px;
+}
+
+.editor-projeto-painel input:focus,
+.editor-projeto-painel textarea:focus {
+    outline: none;
+    border-color: #ef3155;
+}
+
+.editor-projeto-dica {
+    color: var(--texto-suave);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.editor-projeto-erro {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #2a1010;
+    color: #ff9a9a;
+    font-size: 13px;
+}
+
+.editor-projeto-erro[hidden] {
+    display: none;
+}
+
+.editor-projeto-acoes {
+    margin-top: 8px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.editor-arquivos {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 160px;
+    overflow-y: auto;
+}
+
+.editor-arquivo-linha {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    padding: 6px 6px 6px 12px;
+
+    border: 1px solid var(--borda-input);
+    border-radius: 8px;
+
+    background: var(--bg-input);
+    font-size: 13px;
+}
+
+.editor-arquivo-linha span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.editor-arquivo-linha .projeto-acao {
+    height: 28px;
+}

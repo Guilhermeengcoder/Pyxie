@@ -4,7 +4,7 @@ from typing import List, Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-
+from core import usage_groq
 from fastapi.responses import FileResponse
 from core import cloudflare_imagem
 from fastapi.staticfiles import StaticFiles
@@ -12,10 +12,16 @@ from pydantic import BaseModel
 from core.brain import brain
 from core import usage
 from core import usage_gemini
+from core import usage_groq
+from modules.groq_ai import GROQ_MODEL
 from core import llm
 from core import llm_config
 from core import usage_servicos
 from core import db
+from core import projetos
+from core.llm_erros import ErroLLM, mensagem_de_erro_llm
+from core.filtro_segredos import detectar_segredos
+
 
 # Sem /docs nem /openapi.json públicos: não mostram o mapa da API a estranhos.
 app = FastAPI(
@@ -88,6 +94,8 @@ class MensagemProjeto(BaseModel):
     papel: Literal["user", "assistant"]
     conteudo: str
 
+class PerguntaProjeto(BaseModel):
+    mensagem: str
 
 
 def _uso_atual() -> dict:
@@ -98,6 +106,7 @@ def _uso_atual() -> dict:
         dados = usage_gemini.obter()
     else:
         dados = usage.ultimo()
+        dados.update(usage_groq.obter(GROQ_MODEL))
 
     dados["provedor"] = provedor
     dados["modo"] = llm_config.obter_modo()
@@ -299,6 +308,17 @@ def buscar_arquivo_projeto(projeto_id: int, nome: str):
 def salvar_arquivo_projeto(projeto_id: int, arquivo: ArquivoProjeto):
     if db.buscar_projeto(projeto_id) is None:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    
+    if len(arquivo.conteudo) > 100_000:
+        raise HTTPException(status_code=413, detail="Arquivo grande demais (máximo 100 KB).")
+
+    achados = detectar_segredos(arquivo.conteudo)
+    if achados:
+        raise HTTPException(
+            status_code=400,
+            detail="O arquivo parece ter senha ou chave (" + ", ".join(achados)
+            + "). Remova esse trecho e envie de novo.",
+        )
 
     try:
         resultado = db.salvar_arquivo_projeto(
@@ -368,6 +388,33 @@ def registrar_mensagem_projeto(
         )
 
     return resultado
+
+@app.post(
+    "/projetos/{projeto_id}/perguntar",
+    dependencies=[Depends(exigir_token)],
+)
+def perguntar_no_projeto(projeto_id: int, pergunta: PerguntaProjeto):
+    llm.iniciar_rastreio()
+
+    texto = pergunta.mensagem.strip()
+    if not texto:
+        raise HTTPException(status_code=400, detail="Mensagem vazia.")
+
+    if not db.disponivel():
+        raise HTTPException(status_code=503, detail="Banco de dados indisponível.")
+
+    try:
+        resposta = projetos.perguntar(projeto_id, texto)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    except ErroLLM as erro:
+        raise HTTPException(status_code=503, detail=mensagem_de_erro_llm(erro))
+
+    return {
+        "resposta": resposta,
+        "uso": _uso_atual(),
+        "aviso": llm.aviso_da_requisicao(),
+    }
 
 app.mount(
     "/",

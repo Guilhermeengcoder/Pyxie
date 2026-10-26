@@ -267,14 +267,27 @@ def usar_tavily() -> bool:
     return True
 
 
+VERBOS_IMAGEM = (
+    r"(?:gere|gera|gerar|crie|cria|criar|desenhe|desenha|desenhar|"
+    r"fa[cç]a|faz|fazer|monte|mostre|mostra)"
+)
+SUBSTANTIVO_IMAGEM = r"(?:imagem|foto|ilustra[cç][aã]o|desenho|arte|logo|logotipo)"
+
 PADRAO_IMAGEM = re.compile(
-    r"^\s*(?:me\s+)?(?:gere|gera|gerar|crie|cria|criar|desenhe|desenha|desenhar)"
-    r"\s+(?:uma?\s+)?(?:imagem|foto|ilustra[cç][aã]o|desenho)\s*"
+    rf"(?:^|[\s,.;!?])(?:(?:me|pra\s+mim|para\s+mim)\s+)?{VERBOS_IMAGEM}\s+"
+    rf"(?:uma?\s+)?{SUBSTANTIVO_IMAGEM}\s*"
     r"(?:de|do|da|com|d[eo]s?)?\s*(.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 
-LIMITE_MEMORIA_FIXA = 8000
+# Perguntas sobre a capacidade não devem gerar imagem.
+PERGUNTA_CAPACIDADE = re.compile(
+    r"\b(consegue|voce\s+consegue|você\s+consegue|sabe|pode)\b.*\b(gerar|criar|desenhar)\b"
+    r".*\?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+LIMITE_MEMORIA_FIXA = 3000
 
 # Histórico máximo (em caracteres) quando a mensagem é código/texto
 # extenso: o Groq gratuito aceita poucos tokens por pedido.
@@ -692,7 +705,7 @@ class Brain:
 
     def _responder_com_imagem(self, sessao, mensagem_original, mensagem_para_ia):
         """Gera a imagem se a mensagem pedir uma. None se não for o caso."""
-        achado = PADRAO_IMAGEM.match(mensagem_para_ia)
+        achado = PADRAO_IMAGEM.search(mensagem_para_ia)
         if not achado:
             return None
 

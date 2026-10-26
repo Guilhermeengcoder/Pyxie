@@ -28,10 +28,10 @@ PASTA_STM = os.getenv("PYXIE_STM_DIR", "data/stm")
 
 # Teto de caracteres do histórico enviado ao LLM (o arquivo guarda tudo).
 # Use None para enviar tudo.
-LIMITE_CONTEXTO_CHARS = 20000
+LIMITE_CONTEXTO_CHARS = 6000
 
 # Janela reduzida para mensagens que se explicam sozinhas.
-LIMITE_CONTEXTO_AUTONOMA = 4000
+LIMITE_CONTEXTO_AUTONOMA = 2000
 
 # Mensagens com menos palavras que isso dependem do histórico.
 MIN_PALAVRAS_AUTONOMA = 6

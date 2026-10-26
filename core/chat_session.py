@@ -16,10 +16,16 @@ class ChatSession:
         self.ultima_pergunta = None
         self.last_used = time.time()
         self.imagem_pendente = None   # id da imagem gerada nesta resposta
-        
+
+        # Última descrição usada para gerar imagem (permite refinar:
+        # "deixa as asas mais claras" reaproveita o pedido anterior).
+        self.ultima_descricao_imagem = None
+
         # Dados necessários para regenerar uma resposta da IA.
         self.regeneracao_pergunta = None
         self.regeneracao_contexto = None
+        self.regeneracao_memoria_fixa = ""
+        self.regeneracao_leve = False
 
     def touch(self):
         self.last_used = time.time()
@@ -52,7 +58,7 @@ class SessionManager:
             existia = self._sessions.pop(chat_id, None) is not None
         apagar_historico(chat_id)
         return existia
-    
+
     def _purge(self):
         agora = time.time()
 

@@ -164,6 +164,12 @@ def _checar_pergunta_web(msg: str):
     ]
     if any(msg_norm.startswith(i) for i in inicios):
         return 0.9
+
+    # Assuntos que mudam com o tempo: melhor buscar do que deixar o modelo adivinhar
+    gatilhos = {"noticia", "noticias", "apuracao", "cotacao", "placar", "ultimas"}
+    if gatilhos.intersection(msg_norm.split()):
+        return 0.85
+
     return 0.0
 
 

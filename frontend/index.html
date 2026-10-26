@@ -259,35 +259,45 @@
                 <!-- GROQ -->
                 <div id="uso-groq" class="uso-grupo">
 
-                    <div class="uso-bloco">
-                        <div class="uso-bloco-topo">
-                            <span>Tokens (por minuto)</span>
-                            <span id="uso-tokens-texto">—</span>
-                        </div>
-                        <div class="uso-barra-fundo">
-                            <div id="uso-tokens-barra" class="uso-barra"></div>
-                        </div>
-                        <div id="uso-tokens-reset" class="uso-legenda"></div>
-                    </div>
+    <div class="uso-bloco">
+        <div class="uso-bloco-topo">
+            <span>Tokens (por minuto)</span>
+            <span id="uso-tokens-texto">—</span>
+        </div>
+        <div class="uso-barra-fundo">
+            <div id="uso-tokens-barra" class="uso-barra"></div>
+        </div>
+        <div id="uso-tokens-reset" class="uso-legenda"></div>
+    </div>
 
-                    <div class="uso-bloco">
-                        <div class="uso-bloco-topo">
-                            <span>Pedidos (por dia)</span>
-                            <span id="uso-pedidos-texto">—</span>
-                        </div>
-                        <div class="uso-barra-fundo">
-                            <div id="uso-pedidos-barra" class="uso-barra"></div>
-                        </div>
-                    </div>
+    <div class="uso-bloco">
+        <div class="uso-bloco-topo">
+            <span>Tokens (hoje, estimado)</span>
+            <span id="uso-tokdia-texto">—</span>
+        </div>
+        <div id="uso-tokdia-fundo" class="uso-barra-fundo" hidden>
+            <div id="uso-tokdia-barra" class="uso-barra"></div>
+        </div>
+    </div>
 
-                    <p class="uso-nota">
-                        Referente ao modelo <strong id="uso-modelo">—</strong>
-                        (o último usado).
-                        Cada modelo tem seu próprio limite — tokens resetam
-                        a cada minuto, pedidos resetam por dia.
-                    </p>
+    <div class="uso-bloco">
+        <div class="uso-bloco-topo">
+            <span>Pedidos (por dia)</span>
+            <span id="uso-pedidos-texto">—</span>
+        </div>
+        <div class="uso-barra-fundo">
+            <div id="uso-pedidos-barra" class="uso-barra"></div>
+        </div>
+    </div>
 
-                </div>
+    <p class="uso-nota">
+        Referente ao modelo <strong id="uso-modelo">—</strong>
+        (o último usado).
+        Cada modelo tem seu próprio limite. Tokens por minuto resetam a cada
+        minuto; o total diário é uma estimativa feita por este app.
+    </p>
+
+</div>
 
                 <!-- GEMINI -->
                 <div id="uso-gemini" class="uso-grupo" hidden>
