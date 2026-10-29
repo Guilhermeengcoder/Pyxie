@@ -16,6 +16,7 @@ class ChatSession:
         self.ultima_pergunta = None
         self.last_used = time.time()
         self.imagem_pendente = None   # id da imagem gerada nesta resposta
+        self.restrito = False   # canal de voz: sem memória fixa
 
         # Última descrição usada para gerar imagem (permite refinar:
         # "deixa as asas mais claras" reaproveita o pedido anterior).

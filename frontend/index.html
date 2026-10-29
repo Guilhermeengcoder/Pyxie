@@ -184,7 +184,6 @@
                             <button id="menu-rapido-voz"
                                 class="menu-rapido-item"
                                 type="button"
-                                onclick="document.getElementById('microfone').click()">
                                 <span aria-hidden="true">🎙️</span>
                                 <span>Voz</span>
                             </button>
@@ -253,6 +252,20 @@
                     accept="image/*" capture="environment" hidden>
 
             </footer>
+
+        <!-- OVERLAY DO MODO CONVERSA -->
+<div id="voz-overlay" class="voz-overlay" role="dialog"
+    aria-modal="true" aria-label="Modo conversa" hidden>
+    <div class="voz-painel">
+        <div class="voz-orbe" aria-hidden="true"></div>
+        <p id="voz-status" class="voz-status" role="status">Conectando...</p>
+        <p id="voz-legenda-voce" class="voz-legenda voz-legenda-voce"></p>
+        <p id="voz-legenda-pyxie" class="voz-legenda voz-legenda-pyxie"></p>
+        <button id="voz-encerrar" class="camera-btn camera-btn-principal"
+            type="button">Encerrar conversa</button>
+        <p class="voz-dica">Use fones de ouvido para evitar eco.</p>
+    </div>
+</div>
 
         </div>
 

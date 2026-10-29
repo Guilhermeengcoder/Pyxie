@@ -4101,3 +4101,392 @@ carregarProjetos();
     // Mantém o estado inicial sincronizado com o HTML.
     definirMenuAberto(!menuRapido.hidden);
 })();
+
+// ========================================
+// MODO CONVERSA (GEMINI LIVE)
+// ========================================
+
+const botaoVoz = document.getElementById("menu-rapido-voz");
+const vozOverlay = document.getElementById("voz-overlay");
+const vozStatus = document.getElementById("voz-status");
+const vozLegendaVoce = document.getElementById("voz-legenda-voce");
+const vozLegendaPyxie = document.getElementById("voz-legenda-pyxie");
+const vozEncerrar = document.getElementById("voz-encerrar");
+
+const VOZ_TAXA_SAIDA = 24000;
+const VOZ_MAX_TENTATIVAS = 3;
+
+let vozAtiva = false;
+let vozWs = null;
+let vozPronta = false;
+let vozJaConectou = false;
+let vozChatId = null;
+let vozTentativas = 0;
+let vozTimerReconexao = null;
+let vozTurnoFechado = false;
+
+let vozStream = null;
+let vozCtxEntrada = null;
+let vozFonte = null;
+let vozNo = null;
+
+let vozCtxSaida = null;
+let vozProximo = 0;
+let vozFontes = [];
+
+function definirStatusVoz(texto) {
+    vozStatus.textContent = texto;
+}
+
+function limparLegendasVoz() {
+    vozLegendaVoce.textContent = "";
+    vozLegendaPyxie.textContent = "";
+    vozTurnoFechado = false;
+}
+
+function mensagemErroMicrofone(erro) {
+    switch (erro && erro.name) {
+        case "NotAllowedError":
+        case "SecurityError":
+            return "O acesso ao microfone foi negado. Libere o microfone para este site nas configurações do navegador.";
+
+        case "NotFoundError":
+            return "Nenhum microfone foi encontrado.";
+
+        case "NotReadableError":
+            return "O microfone está sendo usado por outro aplicativo.";
+
+        default:
+            return "Não foi possível iniciar o modo conversa.";
+    }
+}
+
+// ----- Reprodução (PCM16 24 kHz vindo do servidor) -----
+
+function pararReproducaoVoz() {
+    vozFontes.forEach(f => {
+        try { f.stop(); } catch (_) { }
+    });
+
+    vozFontes = [];
+    vozProximo = 0;
+}
+
+function tocarPcmVoz(arrayBuffer) {
+    if (!vozCtxSaida) {
+        return;
+    }
+
+    const amostras = arrayBuffer.byteLength >> 1;
+
+    if (!amostras) {
+        return;
+    }
+
+    const pcm = new Int16Array(arrayBuffer, 0, amostras);
+    const audio = vozCtxSaida.createBuffer(1, amostras, VOZ_TAXA_SAIDA);
+    const canal = audio.getChannelData(0);
+
+    for (let i = 0; i < amostras; i++) {
+        canal[i] = pcm[i] / 32768;
+    }
+
+    const fonte = vozCtxSaida.createBufferSource();
+    fonte.buffer = audio;
+    fonte.connect(vozCtxSaida.destination);
+
+    // Se a fila esvaziou, recomeça com uma folga pequena (evita estalos).
+    const agora = vozCtxSaida.currentTime;
+
+    if (vozProximo < agora + 0.03) {
+        vozProximo = agora + 0.06;
+    }
+
+    fonte.start(vozProximo);
+    vozProximo += audio.duration;
+
+    vozFontes.push(fonte);
+
+    fonte.onended = () => {
+        vozFontes = vozFontes.filter(f => f !== fonte);
+    };
+}
+
+// ----- WebSocket -----
+
+function abrirWsVoz() {
+    const protocolo = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${protocolo}://${location.host}/ws/voz`);
+
+    ws.binaryType = "arraybuffer";
+
+    vozWs = ws;
+    vozPronta = false;
+
+    ws.onopen = () => {
+        ws.send(JSON.stringify({
+            token: obterToken(),
+            chat_id: vozChatId
+        }));
+    };
+
+    ws.onmessage = (evento) => {
+        if (ws !== vozWs) {
+            return;
+        }
+
+        // Frame binário = áudio da PYXIE.
+        if (typeof evento.data !== "string") {
+            definirStatusVoz("Falando...");
+            tocarPcmVoz(evento.data);
+            return;
+        }
+
+        let msg;
+
+        try {
+            msg = JSON.parse(evento.data);
+        } catch (_) {
+            return;
+        }
+
+        switch (msg.tipo) {
+            case "pronto":
+                vozPronta = true;
+                vozJaConectou = true;
+                vozTentativas = 0;
+                definirStatusVoz("Ouvindo...");
+                break;
+
+            case "pensando":
+                definirStatusVoz("Pesquisando...");
+                break;
+
+            case "legenda":
+                // O servidor manda o texto acumulado do turno: substitui.
+                if (msg.quem === "voce") {
+                    if (vozTurnoFechado) {
+                        vozLegendaPyxie.textContent = "";
+                        vozTurnoFechado = false;
+                    }
+                    vozLegendaVoce.textContent = msg.texto || "";
+                } else {
+                    vozLegendaPyxie.textContent = msg.texto || "";
+                }
+                break;
+
+            case "interrompido":
+                pararReproducaoVoz();
+                definirStatusVoz("Ouvindo...");
+                break;
+
+            case "fim_turno":
+                vozTurnoFechado = true;
+                definirStatusVoz("Ouvindo...");
+                break;
+
+            default:
+                break;   // "encerrada": o onclose cuida da reconexão
+        }
+    };
+
+    ws.onclose = (evento) => {
+        if (ws !== vozWs) {
+            return;   // fechada de propósito ou já substituída
+        }
+
+        vozWs = null;
+        vozPronta = false;
+
+        if (vozAtiva) {
+            tratarQuedaVoz(evento);
+        }
+    };
+}
+
+function tratarQuedaVoz(evento) {
+    const fatal =
+        evento.code === 1008 ||
+        evento.code === 1011 ||
+        (evento.code === 1013 && !vozJaConectou);
+
+    if (fatal) {
+        if (evento.code === 1008 && /token/i.test(evento.reason || "")) {
+            try {
+                localStorage.removeItem(CHAVE_TOKEN);
+            } catch (_) { }
+        }
+
+        mostrarAviso(evento.reason || "Não foi possível iniciar o modo conversa.");
+        encerrarVoz();
+        return;
+    }
+
+    if (vozTentativas >= VOZ_MAX_TENTATIVAS) {
+        mostrarAviso("A conexão de voz caiu. Tente de novo.");
+        encerrarVoz();
+        return;
+    }
+
+    vozTentativas++;
+
+    pararReproducaoVoz();
+    definirStatusVoz("Reconectando...");
+
+    // Dá tempo de o servidor liberar a vaga (MAX_SESSOES = 1).
+    vozTimerReconexao = setTimeout(() => {
+        if (vozAtiva) {
+            abrirWsVoz();
+        }
+    }, 800 * vozTentativas);
+}
+
+// ----- Início e fim -----
+
+async function iniciarVoz() {
+    if (vozAtiva) {
+        return;
+    }
+
+    if (pendenteId) {
+        mostrarAviso("Aguarde a resposta terminar para iniciar a conversa.");
+        return;
+    }
+
+    const conversa = conversaAtiva();
+
+    if (!conversa) {
+        return;
+    }
+
+    if (conversa.projetoId) {
+        mostrarAviso("O modo conversa ainda não funciona dentro de projetos.");
+        return;
+    }
+
+    if (
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia ||
+        !window.AudioWorkletNode
+    ) {
+        mostrarAviso("Este navegador não suporta o modo conversa (precisa de HTTPS ou localhost).");
+        return;
+    }
+
+    if (!obterToken()) {
+        return;
+    }
+
+    vozAtiva = true;
+    vozChatId = conversa.id;
+    vozTentativas = 0;
+    vozJaConectou = false;
+
+    pararLeitura();
+    limparLegendasVoz();
+
+    vozOverlay.hidden = false;
+    definirStatusVoz("Conectando...");
+
+    try {
+        // Criado dentro do clique para o navegador liberar o áudio.
+        vozCtxSaida = new AudioContext({ sampleRate: VOZ_TAXA_SAIDA });
+        await vozCtxSaida.resume();
+
+        vozStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+
+        vozCtxEntrada = new AudioContext();
+        await vozCtxEntrada.audioWorklet.addModule("voz-worklet.js");
+
+        vozFonte = vozCtxEntrada.createMediaStreamSource(vozStream);
+        vozNo = new AudioWorkletNode(vozCtxEntrada, "captura-pcm");
+
+        vozNo.port.onmessage = (evento) => {
+            if (vozPronta && vozWs && vozWs.readyState === WebSocket.OPEN) {
+                vozWs.send(evento.data);
+            }
+        };
+
+        vozFonte.connect(vozNo);
+        vozNo.connect(vozCtxEntrada.destination);   // saída silenciosa; mantém o nó ativo
+
+        if (!vozAtiva) {
+            // O usuário encerrou enquanto o microfone abria.
+            encerrarVoz();
+            return;
+        }
+
+        abrirWsVoz();
+    } catch (erro) {
+        console.error("Erro ao iniciar o modo conversa:", erro);
+        mostrarAviso(mensagemErroMicrofone(erro));
+        encerrarVoz();
+    }
+}
+
+function encerrarVoz() {
+    vozAtiva = false;
+    vozPronta = false;
+
+    clearTimeout(vozTimerReconexao);
+    vozTimerReconexao = null;
+
+    if (vozWs) {
+        const ws = vozWs;
+        vozWs = null;   // o onclose passa a ignorar este socket
+
+        try { ws.close(1000); } catch (_) { }
+    }
+
+    pararReproducaoVoz();
+
+    if (vozNo) {
+        vozNo.port.onmessage = null;
+        try { vozNo.disconnect(); } catch (_) { }
+        vozNo = null;
+    }
+
+    if (vozFonte) {
+        try { vozFonte.disconnect(); } catch (_) { }
+        vozFonte = null;
+    }
+
+    if (vozStream) {
+        vozStream.getTracks().forEach(faixa => faixa.stop());   // apaga o indicador do microfone
+        vozStream = null;
+    }
+
+    if (vozCtxEntrada) {
+        vozCtxEntrada.close().catch(() => { });
+        vozCtxEntrada = null;
+    }
+
+    if (vozCtxSaida) {
+        vozCtxSaida.close().catch(() => { });
+        vozCtxSaida = null;
+    }
+
+    vozOverlay.hidden = true;
+    limparLegendasVoz();
+}
+
+if (botaoVoz) {
+    botaoVoz.addEventListener("click", iniciarVoz);
+}
+
+if (vozEncerrar) {
+    vozEncerrar.addEventListener("click", encerrarVoz);
+}
+
+document.addEventListener("keydown", (evento) => {
+    if (evento.key === "Escape" && vozAtiva) {
+        encerrarVoz();
+    }
+});

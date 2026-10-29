@@ -21,6 +21,7 @@ from core import db
 from core import projetos
 from core.llm_erros import ErroLLM, mensagem_de_erro_llm
 from core.filtro_segredos import detectar_segredos
+from api import voz
 
 
 # Sem /docs nem /openapi.json públicos: não mostram o mapa da API a estranhos.
@@ -415,6 +416,8 @@ def perguntar_no_projeto(projeto_id: int, pergunta: PerguntaProjeto):
         "uso": _uso_atual(),
         "aviso": llm.aviso_da_requisicao(),
     }
+    
+app.include_router(voz.router)
 
 app.mount(
     "/",

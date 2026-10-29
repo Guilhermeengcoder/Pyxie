@@ -4091,3 +4091,89 @@ button:focus-visible {
         padding: 0;
     }
 }
+
+/* ========================================
+   MODO CONVERSA (OVERLAY)
+======================================== */
+
+.voz-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 24px;
+
+    background: rgba(4, 3, 9, 0.94);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.voz-overlay[hidden] {
+    display: none;
+}
+
+.voz-painel {
+    width: min(100%, 560px);
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+
+    text-align: center;
+}
+
+.voz-orbe {
+    width: 96px;
+    height: 96px;
+    margin-bottom: 8px;
+
+    border-radius: 50%;
+    background: radial-gradient(circle, #f02d50, #8b0000 70%);
+    box-shadow: 0 0 40px rgba(240, 45, 80, 0.35);
+
+    animation: pulso-voz 2.4s infinite ease-in-out;
+}
+
+@keyframes pulso-voz {
+    0%, 100% { transform: scale(0.94); opacity: 0.85; }
+    50%      { transform: scale(1.06); opacity: 1; }
+}
+
+.voz-status {
+    color: var(--texto-suave);
+    font-size: 14px;
+    letter-spacing: 0.04em;
+}
+
+.voz-legenda {
+    min-height: 1.6em;
+    max-width: 100%;
+
+    font-size: 17px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.voz-legenda-voce {
+    color: var(--texto-suave);
+}
+
+.voz-legenda-pyxie {
+    color: var(--texto);
+}
+
+.voz-dica {
+    color: var(--texto-suave);
+    font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .voz-orbe {
+        animation: none;
+    }
+}
