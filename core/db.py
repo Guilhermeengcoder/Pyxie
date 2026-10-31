@@ -327,3 +327,11 @@ def listar_arquivos_com_conteudo(projeto_id: int):
         (projeto_id,),
     )
     return resultado or []
+
+def limpar_mensagens_projeto(projeto_id: int) -> int:
+    """Apaga o histórico do projeto (instruções e arquivos ficam)."""
+    resultado = executar(
+        "DELETE FROM projeto_mensagens WHERE projeto_id = %s RETURNING id",
+        (projeto_id,),
+    )
+    return len(resultado or [])

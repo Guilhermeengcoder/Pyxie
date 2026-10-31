@@ -128,6 +128,18 @@ def perguntar_groq(comando: str, memoria: str = "", busca: bool = BUSCA_GROQ) ->
         return texto
 
     except Exception as e:
+        if "tool_use_failed" in str(e):
+            try:
+                return _chamar(
+                    comando + "\n\n(Responda apenas com texto. Você não tem "
+                    "ferramentas de execução de código.)",
+                    memoria,
+                    False,
+                    limite_saida=2000,
+                )
+            except Exception as e2:
+                e = e2
+
         erro = traduzir_erro_groq(e)
         print(f"[Groq] {erro}")
         raise erro from e

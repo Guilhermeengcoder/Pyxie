@@ -97,6 +97,10 @@ class MensagemProjeto(BaseModel):
 
 class PerguntaProjeto(BaseModel):
     mensagem: str
+    
+class PerguntaProjeto(BaseModel):
+    mensagem: str = ""
+    imagem: Optional[str] = None
 
 
 def _uso_atual() -> dict:
@@ -124,6 +128,8 @@ def perguntar(pergunta: Pergunta):
     
     sessao = brain.sessions.get(pergunta.chat_id)
     sessao.imagem_pendente = None
+    sessao.busca_pendente = None
+    sessao.busca_pendente = None
 
     if pergunta.imagem:
         if (
@@ -150,6 +156,7 @@ def perguntar(pergunta: Pergunta):
     return {
         "resposta": resposta,
         "imagem_id": imagem_id,
+        "memoria_candidata": sessao.busca_pendente is not None,
         "uso": _uso_atual(),
         "aviso": llm.aviso_da_requisicao(),
     }
@@ -180,6 +187,11 @@ def regenerar_resposta(chat_id: str):
 def encerrar_chat(chat_id: str):
     brain.sessions.delete(chat_id)
     return {"ok": True}
+
+@app.post("/memoria/guardar/{chat_id}", dependencies=[Depends(exigir_token)])
+def guardar_memoria(chat_id: str):
+    llm.iniciar_rastreio()
+    return brain.guardar_da_pesquisa(chat_id)
 
 
 @app.get("/uso", dependencies=[Depends(exigir_token)])
@@ -390,6 +402,15 @@ def registrar_mensagem_projeto(
 
     return resultado
 
+@app.delete(
+    "/projetos/{projeto_id}/mensagens",
+    dependencies=[Depends(exigir_token)],
+)
+def limpar_mensagens_projeto(projeto_id: int):
+    if db.buscar_projeto(projeto_id) is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    return {"apagadas": db.limpar_mensagens_projeto(projeto_id)}
+
 @app.post(
     "/projetos/{projeto_id}/perguntar",
     dependencies=[Depends(exigir_token)],
@@ -398,14 +419,17 @@ def perguntar_no_projeto(projeto_id: int, pergunta: PerguntaProjeto):
     llm.iniciar_rastreio()
 
     texto = pergunta.mensagem.strip()
-    if not texto:
+
+    if pergunta.imagem and (
+        not pergunta.imagem.startswith("data:image/")
+        or len(pergunta.imagem) > MAX_IMAGEM_CHARS
+    ):
+        raise HTTPException(status_code=400, detail="Imagem inválida ou grande demais.")
+
+    if not texto and not pergunta.imagem:
         raise HTTPException(status_code=400, detail="Mensagem vazia.")
-
-    if not db.disponivel():
-        raise HTTPException(status_code=503, detail="Banco de dados indisponível.")
-
     try:
-        resposta = projetos.perguntar(projeto_id, texto)
+        resposta = projetos.perguntar(projeto_id, texto, pergunta.imagem)
     except LookupError:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
     except ErroLLM as erro:

@@ -20,7 +20,7 @@ from core.llm_erros import ErroLLM
 
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 
-MAX_TOKENS_RESPOSTA = 1024
+MAX_TOKENS_RESPOSTA = 900
 
 
 def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "") -> str:

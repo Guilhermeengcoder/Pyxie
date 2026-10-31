@@ -132,6 +132,19 @@ def eh_pedido_de_desfazer(msg_norm: str) -> bool:
         "json" in msg_norm or "memoria fixa" in msg_norm
     )
 
+# Seções em que a PYXIE pode PROPOR gravação. Ajuste à vontade.
+PERMITIDAS_AUTO = {"profile", "preferences", "personal_context", "technical_interests"}
+
+_AFIRMACAO_PESSOAL = re.compile(
+    r"^(?:(?:pyxie|ah|olha|entao|sabia que)\s+)*"
+    r"(?:meu|minha|meus|minhas|um dos meus|uma das minhas|"
+    r"eu\s+(?:moro|gosto|odeio|adoro|prefiro|trabalho|estudo|tenho|quero|sonho|nasci))\b"
+)
+
+
+def eh_afirmacao_pessoal(msg_norm: str) -> bool:
+    msg_norm = msg_norm.strip()
+    return len(msg_norm) <= 300 and bool(_AFIRMACAO_PESSOAL.match(msg_norm))
 
 # =============================================================
 # LEITURA
@@ -364,7 +377,9 @@ def montar_prompt_edicao(mensagem: str, dados: dict) -> str:
         "existentes (snake_case, sem acentos).\n"
         "- Listas de objetos (ex.: family_and_companion_names): para incluir use add com o "
         "objeto inteiro; para alterar um item, use set no caminho da lista com a lista completa corrigida.\n"
-        '- Se o pedido não for salvar, alterar ou apagar uma informação, responda {"op": "none"}.\n\n'
+        '- Se o pedido não for salvar, alterar ou apagar uma informação, responda {"op": "none"}.\n'
+        '- Se a informação pedida já estiver no JSON, responda '
+        '{"op": "none", "motivo": "ja_existe"}.\n\n'
         f"JSON atual:\n{atual}\n\n"
         f"Pedido do usuário: {mensagem}"
     )
@@ -390,16 +405,8 @@ def extrair_operacao(texto: str):
     return op
 
 def confirmacao_natural(op: dict) -> str:
-    """Mensagem amigável para o usuário depois de editar a memória."""
-    acao = op.get("op")
-    valor = op.get("value")
-    texto = valor if isinstance(valor, str) and len(valor) <= 120 else None
+    """Confirmação curta depois de editar a memória."""
+    return "Removido." if op.get("op") == "remove" else "Anotado."
 
-    if acao == "remove":
-        if texto:
-            return f'Pronto, tirei "{texto}" da minha memória.'
-        return "Pronto, apaguei essa informação da minha memória."
-
-    if texto:
-        return f'Anotado! Vou me lembrar disso: "{texto}".'
-    return "Anotado! Guardei isso na minha memória."
+def ja_existe(texto: str) -> bool:
+    return bool(re.search(r'"motivo"\s*:\s*"ja_existe"', texto or ""))

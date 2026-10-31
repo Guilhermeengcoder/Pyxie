@@ -10,11 +10,13 @@ import re
 
 from core import db
 from core.llm import perguntar_llm
+from core.llm import perguntar_llm_imagem
 
-MENSAGENS_HISTORICO = 30
-LIMITE_HISTORICO_CHARS = 6000
+MENSAGENS_HISTORICO = 20
+LIMITE_HISTORICO_CHARS = 4000
 LIMITE_ARQUIVO_CHARS = 3000
 LIMITE_ARQUIVOS_TOTAL = 8000
+
 
 
 def _montar_arquivos(projeto_id: int) -> str:
@@ -53,7 +55,7 @@ def _montar_historico(mensagens: list) -> str:
     return "".join(reversed(escolhidas))
 
 
-def perguntar(projeto_id: int, mensagem: str) -> str:
+def perguntar(projeto_id: int, mensagem: str, imagem: str | None = None) -> str:
     """
     Devolve a resposta da PYXIE.
     Levanta LookupError se o projeto não existir e ErroLLM se o modelo falhar.
@@ -88,14 +90,20 @@ def perguntar(projeto_id: int, mensagem: str) -> str:
 
     # leve=True: desliga a busca na web do Groq para economizar tokens,
     # já que o contexto do projeto pode ser grande.
-    resposta = perguntar_llm(mensagem, contexto, leve=True)
+    if imagem:
+        resposta = perguntar_llm_imagem(mensagem, imagem, contexto)
+    else:
+        resposta = perguntar_llm(mensagem, contexto, leve=True)
     resposta = re.sub(r"\s*【[^】]*】", "", resposta or "").strip()
 
     if not resposta:
         from core.llm_erros import ErroLLM
         raise ErroLLM("projeto", "resposta vazia")
 
-    db.registrar_mensagem_projeto(projeto_id, "user", mensagem)
+    texto_usuario = (
+        f"[imagem enviada] {mensagem}".strip() if imagem else mensagem
+    )
+    db.registrar_mensagem_projeto(projeto_id, "user", texto_usuario)
     db.registrar_mensagem_projeto(projeto_id, "assistant", resposta)
     db.executar(
         "UPDATE projetos SET atualizado_em = now() WHERE id = %s", (projeto_id,)

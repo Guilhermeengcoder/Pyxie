@@ -214,6 +214,8 @@ let timerAviso = null;
 
 let respostaRecemChegada = false;
 
+let memoriaCandidataId = null;   // id da conversa cuja última resposta pode ser guardada
+
 
 // ========================================
 // ARMAZENAMENTO LOCAL
@@ -1234,6 +1236,14 @@ function criarIcone(nome) {
         );
     }
 
+    if (nome === "guardar") {
+        svg.append(
+            criarElemento("path", {
+                d: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+            })
+        );
+    }
+
     return svg;
 }
 
@@ -1730,6 +1740,33 @@ function rolarParaOFim() {
     chat.scrollTop = chat.scrollHeight;
 }
 
+async function guardarNaMemoria(conversaId, botaoAcao) {
+    botaoAcao.disabled = true;
+
+    try {
+        const resposta = await apiFetch(
+            `/memoria/guardar/${encodeURIComponent(conversaId)}`,
+            { method: "POST" }
+        );
+
+        let dados = {};
+        try { dados = await resposta.json(); } catch (_) { }
+
+        if (!resposta.ok) {
+            throw new Error(dados.detail || `Erro HTTP ${resposta.status}`);
+        }
+
+        memoriaCandidataId = null;
+        botaoAcao.remove();
+        mostrarAviso(dados.mensagem || "Pronto.", 6000, "info");
+
+    } catch (erro) {
+        console.error("Erro ao guardar na memória:", erro);
+        botaoAcao.disabled = false;
+        mostrarAviso(erro.message || "Não consegui guardar agora.");
+    }
+}
+
 function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
     const mensagem = document.createElement("div");
 
@@ -1875,6 +1912,16 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
             acoes.appendChild(compartilhar);
         }
 
+            if (opcoes.permitirGuardar === true && opcoes.conversaId) {
+            const guardar = criarBotaoAcao("guardar", "Guardar na memória");
+
+            guardar.addEventListener("click", () => {
+                guardarNaMemoria(opcoes.conversaId, guardar);
+            });
+
+            acoes.appendChild(guardar);
+        }
+
         mensagem.appendChild(textoMensagem);
         mensagem.appendChild(acoes);
     }
@@ -1984,6 +2031,11 @@ function renderizarMensagens() {
             m.tipo === "pyxie" &&
             !m.imagemId &&
             temPerguntaAnterior;
+
+            permitirGuardar:
+                ehUltimaMensagem &&
+                m.tipo === "pyxie" &&
+                memoriaCandidataId === conversa.id,
 
         desenharMensagem(m.texto, m.tipo, m.miniatura, {
             permitirRegenerar: permitirRegenerar,
@@ -2121,6 +2173,7 @@ async function regenerarResposta(conversaId) {
         // Atualiza a conversa que estiver aberta, sem trocar a seleção atual.
         if (conversaAtiva()) {
             respostaRecemChegada = true;
+            memoriaCandidataId = null;
             renderizarMensagens();
             respostaRecemChegada = false;
         }
@@ -2876,11 +2929,6 @@ async function enviarMensagem() {
         return;
     }
 
-    if (conversa.projetoId && imagem) {
-    mostrarAviso("Imagens ainda não são suportadas dentro de projetos.");
-    return;
-    }
-
     // Define o título apenas na primeira mensagem da conversa.
     if (
         conversa.mensagens.length === 0 &&
@@ -2912,6 +2960,7 @@ async function enviarMensagem() {
 
     registrarMensagem(conversa, "usuario", texto, miniatura);
     desenharMensagem(texto, "usuario", miniatura);
+    memoriaCandidataId = null;
 
     // Limpa campo e anexo
     input.value = "";
@@ -2934,7 +2983,7 @@ async function enviarMensagem() {
             : "/perguntar";
 
         const corpo = conversa.projetoId
-            ? { mensagem: texto }
+            ? { mensagem: texto, imagem: imagem ? imagem.dataUrl : null }
             : {
                 mensagem: texto,
                 chat_id: conversa.id,
@@ -2964,6 +3013,7 @@ async function enviarMensagem() {
 
         respostaTexto = dados.resposta;
         imagemIdResposta = dados.imagem_id || null;
+        memoriaCandidataId = dados.memoria_candidata ? conversa.id : null;
 
         if (dados.uso) {
             atualizarPainelUso(dados.uso);
@@ -4402,8 +4452,10 @@ async function iniciarVoz() {
             }
         });
 
+        // Os dois contextos são criados dentro do clique, antes de qualquer await.
+        vozCtxSaida = new AudioContext({ sampleRate: VOZ_TAXA_SAIDA });
         vozCtxEntrada = new AudioContext();
-        await vozCtxEntrada.audioWorklet.addModule("voz-worklet.js");
+        await Promise.all([vozCtxSaida.resume(), vozCtxEntrada.resume()]);
 
         vozFonte = vozCtxEntrada.createMediaStreamSource(vozStream);
         vozNo = new AudioWorkletNode(vozCtxEntrada, "captura-pcm");
