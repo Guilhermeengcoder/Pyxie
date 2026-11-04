@@ -173,7 +173,7 @@
                                 <span>Arquivos</span>
                             </button>
 
-                            <button id="menu-rapido-camera"
+                            <button id="menu-rapido-camera" 
                                 class="menu-rapido-item"
                                 type="button"
                                 onclick="document.getElementById('camera').click()">
@@ -182,11 +182,11 @@
                             </button>
 
                             <button id="menu-rapido-voz"
-                                class="menu-rapido-item"
-                                type="button"
-                                <span aria-hidden="true">🎙️</span>
-                                <span>Voz</span>
-                            </button>
+    class="menu-rapido-item"
+    type="button">
+    <span aria-hidden="true">🎙️</span>
+    <span>Voz</span>
+</button>
 
                         </div>
                     </div>
@@ -247,7 +247,8 @@
                 </div>
 
                 <!-- SELETORES DE ARQUIVO -->
-                <input type="file" id="arquivo" accept="image/*" hidden>
+                <input type="file" id="arquivo" 
+                    accept="image/*,.txt,.md,.py,.js,.json,.csv,.html,.css,.sql,.yml,.yaml,.ini,.log" hidden>
                 <input type="file" id="arquivo-camera"
                     accept="image/*" capture="environment" hidden>
 
@@ -458,28 +459,40 @@
 
     <!-- MODAL DA CÂMERA -->
     <div id="camera-modal" class="camera-modal"
-        role="dialog" aria-modal="true" aria-label="Câmera" hidden>
+    role="dialog" aria-modal="true" aria-label="Câmera" hidden>
 
-        <div class="camera-painel">
+    <div class="camera-painel">
 
+        <div class="camera-quadro">
             <video id="camera-video" autoplay playsinline muted></video>
-
-            <p id="camera-erro" class="camera-erro" role="alert"></p>
-
-            <div class="camera-acoes">
-                <button id="camera-cancelar" class="camera-btn"
-                    type="button">Cancelar</button>
-
-                <button id="camera-virar" class="camera-btn"
-                    type="button">Virar câmera</button>
-
-                <button id="camera-capturar"
-                    class="camera-btn camera-btn-principal"
-                    type="button">Tirar foto</button>
-            </div>
-
         </div>
+
+        <div class="camera-controles">
+            <label>Zoom
+                <input id="camera-zoom" type="range" min="1" max="4" step="0.1" value="1">
+            </label>
+            <label id="camera-exp-linha" hidden>Luz
+                <input id="camera-exp" type="range">
+            </label>
+            <button id="camera-lanterna" class="camera-btn" type="button" hidden>Lanterna</button>
+        </div>
+
+        <p id="camera-erro" class="camera-erro" role="alert"></p>
+
+        <div class="camera-acoes">
+            <button id="camera-cancelar" class="camera-btn"
+                type="button">Cancelar</button>
+
+            <button id="camera-virar" class="camera-btn"
+                type="button">Virar câmera</button>
+
+            <button id="camera-capturar"
+                class="camera-btn camera-btn-principal"
+                type="button">Tirar foto</button>
+        </div>
+
     </div>
+</div>
 
     <script src="script.js"></script>
 

@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from core.brain import brain
 from core import usage
 from core import usage_gemini
-from core import usage_groq
 from modules.groq_ai import GROQ_MODEL
 from core import llm
 from core import llm_config
@@ -22,6 +21,7 @@ from core import projetos
 from core.llm_erros import ErroLLM, mensagem_de_erro_llm
 from core.filtro_segredos import detectar_segredos
 from api import voz
+from core import resumo_arquivo
 
 
 # Sem /docs nem /openapi.json públicos: não mostram o mapa da API a estranhos.
@@ -62,7 +62,12 @@ MAX_IMAGEM_CHARS = 6_000_000
 class MensagemHistorico(BaseModel):
     role: str       # "user" ou "assistant"
     content: str
-
+    
+    
+class ArquivoChat(BaseModel):
+    nome: str
+    conteudo: str
+    
 
 class Pergunta(BaseModel):
     mensagem: str = ""
@@ -70,6 +75,7 @@ class Pergunta(BaseModel):
     # O front-end ainda envia isso; por enquanto o brain não usa.
     historico: Optional[List[MensagemHistorico]] = None
     imagem: Optional[str] = None
+    arquivo: Optional[ArquivoChat] = None
 
 
 class NovoModo(BaseModel):
@@ -94,15 +100,12 @@ class ArquivoProjeto(BaseModel):
 class MensagemProjeto(BaseModel):
     papel: Literal["user", "assistant"]
     conteudo: str
-
-class PerguntaProjeto(BaseModel):
-    mensagem: str
+    
     
 class PerguntaProjeto(BaseModel):
     mensagem: str = ""
     imagem: Optional[str] = None
-
-
+    
 def _uso_atual() -> dict:
     """Uso do provedor que o painel deve mostrar (com 'provedor' e 'modo')."""
     provedor = llm.provedor_do_painel()
@@ -118,6 +121,7 @@ def _uso_atual() -> dict:
     return dados
 
 
+
 # IMPORTANTE: estes endpoints são "def" (não "async def") de propósito.
 # O rastreio do provedor é por thread; a requisição inteira precisa
 # rodar na mesma thread.
@@ -129,7 +133,6 @@ def perguntar(pergunta: Pergunta):
     sessao = brain.sessions.get(pergunta.chat_id)
     sessao.imagem_pendente = None
     sessao.busca_pendente = None
-    sessao.busca_pendente = None
 
     if pergunta.imagem:
         if (
@@ -138,17 +141,35 @@ def perguntar(pergunta: Pergunta):
         ):
             raise HTTPException(status_code=400, detail="Imagem inválida ou grande demais.")
 
-    if not pergunta.mensagem.strip() and not pergunta.imagem:
+    if not pergunta.mensagem.strip() and not pergunta.imagem and not pergunta.arquivo:
         raise HTTPException(status_code=400, detail="Mensagem vazia.")
+
+    mensagem = pergunta.mensagem
+
+    if pergunta.arquivo and not pergunta.imagem:
+        arq = pergunta.arquivo
+
+        if len(arq.conteudo) > 500_000:
+            raise HTTPException(status_code=413, detail="Arquivo grande demais (máximo 500 KB).")
+
+        try:
+            resumo = resumo_arquivo.resumir(arq.nome, arq.conteudo)
+        except ErroLLM as erro:
+            raise HTTPException(status_code=503, detail=mensagem_de_erro_llm(erro))
+
+        # A cerca ``` faz o brain tratar como conteúdo extenso (vai direto ao
+        # modelo, sem atalhos de memória) e marca o texto como dado.
+        mensagem = (
+            (mensagem.strip() or "Resuma o arquivo anexado.")
+            + f"\n\n[Arquivo anexado: {arq.nome}]\n```\n{resumo}\n```"
+        )
 
     if pergunta.imagem:
         resposta = brain.processar_imagem(
-            pergunta.mensagem,
-            pergunta.imagem,
-            chat_id=pergunta.chat_id,
+            pergunta.mensagem, pergunta.imagem, chat_id=pergunta.chat_id,
         )
     else:
-        resposta = brain.process(pergunta.mensagem, chat_id=pergunta.chat_id)
+        resposta = brain.process(mensagem, chat_id=pergunta.chat_id)
 
     imagem_id = sessao.imagem_pendente
     sessao.imagem_pendente = None
@@ -199,7 +220,6 @@ def uso():
     return _uso_atual()
 
 
-# ATENÇÃO: sem autenticação por enquanto (item 4 do roadmap de segurança).
 # Quem tiver a URL consegue trocar o modo. Trocar para o Gemini não vaza
 # memória (a trava do llm.py continua valendo), mas muda o comportamento.
 @app.get("/modo", dependencies=[Depends(exigir_token)])
@@ -322,10 +342,10 @@ def salvar_arquivo_projeto(projeto_id: int, arquivo: ArquivoProjeto):
     if db.buscar_projeto(projeto_id) is None:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
     
-    if len(arquivo.conteudo) > 100_000:
-        raise HTTPException(status_code=413, detail="Arquivo grande demais (máximo 100 KB).")
+    if len(arquivo.conteudo) > 500_000:
+        raise HTTPException(status_code=413, detail="Arquivo grande demais (máximo 500 KB).")
 
-    achados = detectar_segredos(arquivo.conteudo)
+        achados = detectar_segredos(arquivo.conteudo)
     if achados:
         raise HTTPException(
             status_code=400,
@@ -333,11 +353,19 @@ def salvar_arquivo_projeto(projeto_id: int, arquivo: ArquivoProjeto):
             + "). Remova esse trecho e envie de novo.",
         )
 
+    resumo = None
+    if len(arquivo.conteudo) > resumo_arquivo.LIMITE_DIRETO:
+        try:
+            resumo = resumo_arquivo.resumir(arquivo.nome, arquivo.conteudo)
+        except ErroLLM as erro:
+            print(f"[resumo arquivo] {erro}")
+
     try:
         resultado = db.salvar_arquivo_projeto(
             projeto_id,
             arquivo.nome,
             arquivo.conteudo,
+            resumo=resumo,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

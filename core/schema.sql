@@ -52,3 +52,5 @@ CREATE TABLE IF NOT EXISTS projeto_arquivos (
 
     CONSTRAINT uq_projeto_arquivo_nome UNIQUE (projeto_id, nome)
 );
+
+ALTER TABLE projeto_arquivos ADD COLUMN IF NOT EXISTS resumo TEXT;

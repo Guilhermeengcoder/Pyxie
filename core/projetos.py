@@ -28,13 +28,13 @@ def _montar_arquivos(projeto_id: int) -> str:
             blocos.append(f"(arquivo '{arq['nome']}' omitido: limite de contexto)")
             continue
 
-        texto = arq["conteudo"][: min(LIMITE_ARQUIVO_CHARS, restante)]
-        cortado = len(texto) < len(arq["conteudo"])
+        origem = arq.get("resumo") or arq["conteudo"]
+        texto = origem[: min(LIMITE_ARQUIVO_CHARS, restante)]
+        cortado = len(texto) < len(origem)
         total += len(texto)
 
-        blocos.append(
-            f"=== ARQUIVO: {arq['nome']}{' (cortado)' if cortado else ''} ===\n{texto}"
-        )
+        marca = " (resumo)" if arq.get("resumo") else (" (cortado)" if cortado else "")
+        blocos.append(f"=== ARQUIVO: {arq['nome']}{marca} ===\n{texto}")
 
     return "\n\n".join(blocos)
 

@@ -34,7 +34,9 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
     pergunta = (comando or "").strip() or "Descreva o que você vê nesta imagem."
 
     pergunta += (
-        "\n(O usuário anexou uma imagem. Responda com base no que você vê nela.)"
+        "\n(O usuário anexou uma imagem. Responda com base no que você vê nela. "
+        "Dê direto a resposta final, sem mostrar raciocínio, rascunho ou "
+        "autocorreções.)"
     )
 
     prompt = _montar_prompt(pergunta, memoria)
@@ -52,6 +54,7 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
                 }
             ],
             max_completion_tokens=MAX_TOKENS_RESPOSTA,
+            reasoning_effort="none",
         )
 
         try:
@@ -60,10 +63,16 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
             pass
 
         response = resposta_bruta.parse()
-        texto = response.choices[0].message.content or ""
+        
+        escolha = response.choices[0]
+        if escolha.finish_reason == "length":
+            raise ErroLLM("groq", "resposta cortada (limite de tokens)")
+        texto = escolha.message.content or ""
 
         texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.DOTALL).strip()
 
+    except ErroLLM:
+        raise
     except Exception as e:
         erro = traduzir_erro_groq(e)
         print(f"[Groq visão] {erro}")

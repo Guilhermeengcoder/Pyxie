@@ -65,7 +65,7 @@ def _gerar_e_salvar(prompt: str, imagem_id: str) -> dict:
     url = f"https://api.cloudflare.com/client/v4/accounts/{conta}/ai/run/{MODELO}"
     corpo = {
         "prompt": prompt,
-        "negative_prompt": "blurry, distorted, low quality, text, watermark",
+        "negative_prompt": "blurry, distorted, low quality, text, watermark, extra limbs, extra legs, extra fingers, deformed, bad anatomy",
         "width": LARGURA,
         "height": ALTURA,
         "num_steps": ETAPAS,

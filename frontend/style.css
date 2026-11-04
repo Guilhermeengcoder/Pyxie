@@ -1244,64 +1244,43 @@ body.sidebar-fechada .sidebar {
     background: #000000;
 }
 
+.camera-quadro {
+    overflow: hidden;
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+    background: #000;
+}
+
+#camera-video {
+    display: block;
+    border: none;
+    border-radius: 0;
+    transform: scale(var(--zoom, 1));
+}
+
 #camera-video.espelhado {
-    transform: scaleX(-1);
+    transform: scaleX(-1) scale(var(--zoom, 1));
 }
 
-.camera-erro {
-    color: #ff9a9a;
-
-    font-size: 14px;
-    text-align: center;
-}
-
-.camera-erro:empty {
-    display: none;
-}
-
-.camera-acoes {
+.camera-controles {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 14px;
+    color: var(--texto-suave);
+    font-size: 13px;
 }
 
-.camera-btn {
-    padding: 11px 20px;
-
-    border: 1px solid var(--borda-input);
-    border-radius: 10px;
-
-    background: transparent;
-
-    font-size: 15px;
-
-    cursor: pointer;
-
-    transition: background 0.15s;
+.camera-controles label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.camera-btn:hover {
-    background: var(--bg-hover);
-}
-
-.camera-btn:disabled {
-    opacity: 0.4;
-
-    cursor: not-allowed;
-}
-
-.camera-btn-principal {
-    border-color: var(--acento);
-
-    background: var(--acento);
-
-    color: #ffffff;
-    font-weight: bold;
-}
-
-.camera-btn-principal:hover {
-    background: var(--acento-hover);
+.camera-controles label[hidden],
+.camera-controles .camera-btn[hidden] {
+    display: none;
 }
 
 
@@ -4176,4 +4155,72 @@ button:focus-visible {
     .voz-orbe {
         animation: none;
     }
+}
+
+/* Câmera: botões e controles */
+#camera-modal .camera-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+#camera-modal .camera-acoes button,
+#camera-modal #camera-lanterna {
+    padding: 11px 20px;
+    border: 1px solid var(--borda-input);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--texto);
+    font-size: 15px;
+    cursor: pointer;
+}
+
+#camera-modal .camera-acoes button:hover,
+#camera-modal #camera-lanterna:hover {
+    background: var(--bg-hover);
+}
+
+#camera-modal #camera-capturar {
+    border-color: var(--acento);
+    background: var(--acento);
+    color: #fff;
+    font-weight: bold;
+}
+
+#camera-modal #camera-capturar:hover {
+    background: var(--acento-hover);
+}
+
+#camera-modal button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#camera-modal .camera-controles input[type="range"] {
+    accent-color: var(--acento);
+}
+
+.camera-quadro {
+    touch-action: none; /* necessário para o gesto de pinça */
+}
+
+.previa-arquivo {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 6px 6px 6px 12px;
+    border: 1px solid var(--borda-input);
+    border-radius: 10px;
+    background: var(--bg-input);
+    font-size: 13px;
+}
+
+.previa-arquivo button {
+    border: none;
+    background: transparent;
+    color: var(--texto-suave);
+    font-size: 16px;
+    cursor: pointer;
 }

@@ -45,6 +45,134 @@ const cameraErro = document.getElementById("camera-erro");
 const cameraCancelar = document.getElementById("camera-cancelar");
 const cameraVirar = document.getElementById("camera-virar");
 const cameraCapturar = document.getElementById("camera-capturar");
+const cameraZoom = document.getElementById("camera-zoom");
+const cameraExp = document.getElementById("camera-exp");
+const cameraExpLinha = document.getElementById("camera-exp-linha");
+const cameraLanterna = document.getElementById("camera-lanterna");
+
+let zoomDigital = 1;      // usado só quando o aparelho não tem zoom real
+let zoomReal = false;
+let lanternaLigada = false;
+
+function aplicarRestricao(avancada) {
+    const faixa = streamCamera && streamCamera.getVideoTracks()[0];
+    if (!faixa) return;
+    faixa.applyConstraints({ advanced: [avancada] }).catch(e => {
+        console.warn("Câmera recusou o ajuste:", e);
+    });
+}
+
+function configurarControlesCamera() {
+    if (!cameraZoom || !cameraExp || !cameraExpLinha || !cameraLanterna) return;
+    const faixa = streamCamera.getVideoTracks()[0];
+    const caps = faixa.getCapabilities ? faixa.getCapabilities() : {};
+
+    zoomDigital = 1;
+    lanternaLigada = false;
+    cameraVideo.style.removeProperty("--zoom");
+
+    // Zoom: real se o aparelho tem, senão digital.
+    zoomReal = !!caps.zoom;
+    cameraZoom.min = zoomReal ? caps.zoom.min : 1;
+    cameraZoom.max = zoomReal ? Math.min(caps.zoom.max, 8) : 4;
+    cameraZoom.step = zoomReal ? (caps.zoom.step || 0.1) : 0.1;
+    cameraZoom.value = cameraZoom.min;
+
+    // Luz (compensação de exposição)
+    const temExp = !!caps.exposureCompensation;
+    cameraExpLinha.hidden = !temExp;
+    if (temExp) {
+        cameraExp.min = caps.exposureCompensation.min;
+        cameraExp.max = caps.exposureCompensation.max;
+        cameraExp.step = caps.exposureCompensation.step || 0.1;
+        cameraExp.value = 0;
+    }
+
+    // Lanterna
+    cameraLanterna.hidden = !caps.torch;
+}
+
+if (cameraZoom) {
+    cameraZoom.addEventListener("input", () => {
+        const v = parseFloat(cameraZoom.value);
+        if (zoomReal) {
+            aplicarRestricao({ zoom: v });
+        } else {
+            zoomDigital = v;
+            cameraVideo.style.setProperty("--zoom", v);
+        }
+    });
+}
+
+if (cameraExp) {
+    cameraExp.addEventListener("input", () => {
+        aplicarRestricao({ exposureCompensation: parseFloat(cameraExp.value) });
+    });
+}
+
+if (cameraLanterna) {
+    cameraLanterna.addEventListener("click", () => {
+        lanternaLigada = !lanternaLigada;
+        aplicarRestricao({ torch: lanternaLigada });
+    });
+}
+
+// Zoom por pinça (dois dedos) e roda do mouse
+const quadroCamera = document.querySelector(".camera-quadro");
+const toquesCamera = new Map();
+let pincaDistInicial = 0;
+let pincaZoomInicial = 1;
+
+function definirZoomCamera(valor) {
+    if (!cameraZoom) return;
+    const min = parseFloat(cameraZoom.min);
+    const max = parseFloat(cameraZoom.max);
+    cameraZoom.value = Math.max(min, Math.min(max, valor));
+    cameraZoom.dispatchEvent(new Event("input"));
+}
+
+function distanciaDosToques() {
+    const [a, b] = [...toquesCamera.values()];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+if (quadroCamera && cameraZoom) {
+    quadroCamera.addEventListener("pointerdown", (e) => {
+        toquesCamera.set(e.pointerId, e);
+
+        if (toquesCamera.size === 2) {
+            pincaDistInicial = distanciaDosToques();
+            pincaZoomInicial = parseFloat(cameraZoom.value);
+        }
+    });
+
+    quadroCamera.addEventListener("pointermove", (e) => {
+        if (!toquesCamera.has(e.pointerId)) return;
+
+        toquesCamera.set(e.pointerId, e);
+
+        if (toquesCamera.size === 2 && pincaDistInicial > 0) {
+            definirZoomCamera(
+                pincaZoomInicial * (distanciaDosToques() / pincaDistInicial)
+            );
+        }
+    });
+
+    const soltar = (e) => {
+        toquesCamera.delete(e.pointerId);
+        pincaDistInicial = 0;
+    };
+
+    quadroCamera.addEventListener("pointerup", soltar);
+    quadroCamera.addEventListener("pointercancel", soltar);
+    quadroCamera.addEventListener("pointerleave", soltar);
+
+    // Desktop: roda do mouse
+    quadroCamera.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        definirZoomCamera(parseFloat(cameraZoom.value) - e.deltaY * 0.005);
+    }, { passive: false });
+}
 
 function gerarChatId() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -683,7 +811,7 @@ function abrirEditorProjeto(projeto) {
     const avisoArquivos = document.createElement("p");
     avisoArquivos.classList.add("editor-projeto-dica");
     avisoArquivos.textContent =
-        "Só texto e código (até 100 KB cada). A PYXIE lê os primeiros 3.000 " +
+        "Só texto e código (até 500 KB cada). A PYXIE lê os primeiros 3.000 " +
         "caracteres de cada arquivo, até 8.000 no total.";
 
     async function carregarArquivosDoProjeto() {
@@ -752,8 +880,8 @@ function abrirEditorProjeto(projeto) {
         const problemas = [];
 
         for (const arquivo of escolhidos) {
-            if (arquivo.size > 100 * 1024) {
-                problemas.push(`${arquivo.name}: passa de 100 KB.`);
+            if (arquivo.size > 500 * 1024) {
+                problemas.push(`${arquivo.name}: passa de 500 KB.`);
                 continue;
             }
 
@@ -2032,13 +2160,14 @@ function renderizarMensagens() {
             !m.imagemId &&
             temPerguntaAnterior;
 
-            permitirGuardar:
-                ehUltimaMensagem &&
-                m.tipo === "pyxie" &&
-                memoriaCandidataId === conversa.id,
+        const permitirGuardar =
+            ehUltimaMensagem &&
+            m.tipo === "pyxie" &&
+            memoriaCandidataId === conversa.id;
 
         desenharMensagem(m.texto, m.tipo, m.miniatura, {
             permitirRegenerar: permitirRegenerar,
+            permitirGuardar: permitirGuardar,
             conversaId: m.tipo === "pyxie" ? conversa.id : null,
             imagemId: m.imagemId || null,
             rolarParaTopo: ehUltimaMensagem && m.tipo === "pyxie" && respostaRecemChegada
@@ -2669,6 +2798,8 @@ function definirImagemPendente(fonte, largura, altura) {
         return;
     }
 
+    removerArquivoPendente();
+
     imagemPendente = {
         dataUrl: reduzirImagem(
             fonte,
@@ -2713,6 +2844,68 @@ function removerImagemPendente() {
     renderizarPrevia();
 }
 
+// ----- Arquivo de texto anexado -----
+const MAX_TEXTO_KB = 500;
+const EXT_TEXTO = /\.(txt|md|py|js|json|csv|html|css|sql|ya?ml|ini|log)$/i;
+let arquivoPendente = null;
+
+function removerArquivoPendente() {
+    arquivoPendente = null;
+    const chip = document.getElementById("previa-arquivo");
+    if (chip) chip.remove();
+    input.placeholder = PLACEHOLDER_PADRAO;
+}
+
+async function adicionarArquivoTexto(arquivo) {
+    if (!EXT_TEXTO.test(arquivo.name)) {
+        mostrarAviso("Aceito imagens e arquivos de texto/código (.txt, .md, .py, .json, .csv...).");
+        return;
+    }
+
+    if (arquivo.size > MAX_TEXTO_KB * 1024) {
+        mostrarAviso(`O arquivo passa de ${MAX_TEXTO_KB} KB.`);
+        return;
+    }
+
+    let conteudo;
+    try {
+        conteudo = await arquivo.text();
+    } catch (_) {
+        mostrarAviso("Não consegui ler esse arquivo.");
+        return;
+    }
+
+    if (conteudo.includes("\uFFFD") || conteudo.includes("\u0000")) {
+        mostrarAviso("Esse arquivo não parece ser texto.");
+        return;
+    }
+
+    removerImagemPendente();
+
+    removerArquivoPendente();
+
+    arquivoPendente = { nome: arquivo.name, conteudo };
+
+    const chip = document.createElement("div");
+    chip.id = "previa-arquivo";
+    chip.className = "previa-arquivo";
+
+    const rotulo = document.createElement("span");
+    rotulo.textContent =
+        "📎 " + arquivo.name + " (" + Math.max(1, Math.round(arquivo.size / 1024)) + " KB)";
+
+    const remover = document.createElement("button");
+    remover.type = "button";
+    remover.textContent = "×";
+    remover.setAttribute("aria-label", "Remover arquivo");
+    remover.addEventListener("click", removerArquivoPendente);
+
+    chip.append(rotulo, remover);
+    previa.insertAdjacentElement("afterend", chip);
+
+    input.placeholder = "Pergunte algo sobre o arquivo (opcional)";
+}
+
 // Ponto de entrada comum: seletor de arquivo, colar, arrastar
 async function adicionarArquivo(arquivo) {
     if (!arquivo) {
@@ -2720,7 +2913,7 @@ async function adicionarArquivo(arquivo) {
     }
 
     if (!arquivo.type.startsWith("image/")) {
-        mostrarAviso("Por enquanto só imagens são aceitas (JPG, PNG, WebP...).");
+        await adicionarArquivoTexto(arquivo);
         return;
     }
 
@@ -2787,13 +2980,16 @@ async function iniciarCamera() {
         streamCamera = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: cameraFrontal ? "user" : "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
             },
             audio: false
         });
 
         cameraVideo.srcObject = streamCamera;
+
+        cameraVideo.srcObject = streamCamera;
+        configurarControlesCamera();
 
         // Espelha só a prévia da câmera frontal / webcam.
         const config = streamCamera.getVideoTracks()[0].getSettings();
@@ -2844,7 +3040,21 @@ function capturarFoto() {
         return;
     }
 
-    definirImagemPendente(cameraVideo, largura, altura);
+        if (!zoomReal && zoomDigital > 1) {
+        const sw = largura / zoomDigital;
+        const sh = altura / zoomDigital;
+        const recorte = document.createElement("canvas");
+        recorte.width = Math.round(sw);
+        recorte.height = Math.round(sh);
+        recorte.getContext("2d").drawImage(
+            cameraVideo,
+            (largura - sw) / 2, (altura - sh) / 2, sw, sh,
+            0, 0, recorte.width, recorte.height
+        );
+        definirImagemPendente(recorte, recorte.width, recorte.height);
+    } else {
+        definirImagemPendente(cameraVideo, largura, altura);
+    }
 
     fecharCamera();
 }
@@ -2916,16 +3126,19 @@ function gerarTituloConversa(texto) {
 async function enviarMensagem() {
     const texto = input.value.trim();
     ajustarAlturaInput();
-    const imagem = imagemPendente;
 
-    // Não envia mensagem vazia nem enquanto espera resposta.
-    if ((!texto && !imagem) || pendenteId) {
+    const imagem = imagemPendente;
+    const arquivo = arquivoPendente;                       
+
+    if ((!texto && !imagem && !arquivo) || pendenteId) {   // condição alterada
         return;
     }
 
     const conversa = conversaAtiva();
+    if (!conversa) return;
 
-    if (!conversa) {
+    if (arquivo && conversa.projetoId) {                   
+        mostrarAviso("Em projetos, adicione arquivos pelo editor do projeto (✎).");
         return;
     }
 
@@ -2958,8 +3171,11 @@ async function enviarMensagem() {
 
     const miniatura = imagem ? imagem.miniatura : null;
 
-    registrarMensagem(conversa, "usuario", texto, miniatura);
-    desenharMensagem(texto, "usuario", miniatura);
+    const textoExibido = arquivo ? `📎 ${arquivo.nome}\n${texto}`.trim() : texto;
+
+    registrarMensagem(conversa, "usuario", textoExibido, miniatura);
+    desenharMensagem(textoExibido, "usuario", miniatura);
+
     memoriaCandidataId = null;
 
     // Limpa campo e anexo
@@ -4438,10 +4654,13 @@ async function iniciarVoz() {
     vozOverlay.hidden = false;
     definirStatusVoz("Conectando...");
 
-    try {
-        // Criado dentro do clique para o navegador liberar o áudio.
+        try {
+        // Os dois contextos nascem dentro do clique, antes de qualquer await.
         vozCtxSaida = new AudioContext({ sampleRate: VOZ_TAXA_SAIDA });
-        await vozCtxSaida.resume();
+        vozCtxEntrada = new AudioContext();
+        await Promise.all([vozCtxSaida.resume(), vozCtxEntrada.resume()]);
+
+        await vozCtxEntrada.audioWorklet.addModule("voz-worklet.js");
 
         vozStream = await navigator.mediaDevices.getUserMedia({
             audio: {
@@ -4452,19 +4671,8 @@ async function iniciarVoz() {
             }
         });
 
-        // Os dois contextos são criados dentro do clique, antes de qualquer await.
-        vozCtxSaida = new AudioContext({ sampleRate: VOZ_TAXA_SAIDA });
-        vozCtxEntrada = new AudioContext();
-        await Promise.all([vozCtxSaida.resume(), vozCtxEntrada.resume()]);
-
         vozFonte = vozCtxEntrada.createMediaStreamSource(vozStream);
         vozNo = new AudioWorkletNode(vozCtxEntrada, "captura-pcm");
-
-        vozNo.port.onmessage = (evento) => {
-            if (vozPronta && vozWs && vozWs.readyState === WebSocket.OPEN) {
-                vozWs.send(evento.data);
-            }
-        };
 
         vozFonte.connect(vozNo);
         vozNo.connect(vozCtxEntrada.destination);   // saída silenciosa; mantém o nó ativo

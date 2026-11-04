@@ -19,7 +19,6 @@ class ChatSession:
         self.restrito = False   # canal de voz: sem memória fixa
         self.memoria_pendente = None   # {"op": dict, "ate": timestamp}
         self.busca_pendente = None   # {"pergunta", "resposta", "ate"}
-        self.busca_pendente = None   # {"pergunta", "resposta", "ate"}
 
         # Última descrição usada para gerar imagem (permite refinar:
         # "deixa as asas mais claras" reaproveita o pedido anterior).

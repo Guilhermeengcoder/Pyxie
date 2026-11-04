@@ -288,6 +288,8 @@ def preparar_prompt_imagem(descricao: str) -> str:
         "- For diagrams, preserve the requested structure and exact labels. "
         "Do not replace requested text with invented labels.\n"
         "- Use natural English, prioritize essential details, remove "
+        "- For named characters or people, describe their key visual traits "
+        "-(hair, clothing, colors, distinctive features) instead of relying on the name.\n"
         "redundancy, and do not add quality buzzwords or parameters for "
         "other image-generation systems.\n"
         "- Return only the final prompt on one line, preferably under "
@@ -411,10 +413,6 @@ PERGUNTA_CAPACIDADE = re.compile(
     r".*\?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
-
-SIM_MEMORIA = {"sim", "s", "pode", "pode salvar", "salva", "salve", "guarde",
-               "confirmo", "claro", "ok"}
-NAO_MEMORIA = {"nao", "n", "cancela", "cancele", "nao precisa", "deixa"}
 
 REGRA_AUTO = (
     "\nRegra extra: proponha uma operação SOMENTE se o pedido for um fato duradouro "

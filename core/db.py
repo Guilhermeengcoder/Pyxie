@@ -174,11 +174,22 @@ def excluir_projeto(projeto_id: int) -> bool:
 # ARQUIVOS DOS PROJETOS
 # =============================================================
 
-def salvar_arquivo_projeto(
-    projeto_id: int,
-    nome: str,
-    conteudo: str,
-):
+def salvar_arquivo_projeto(projeto_id: int, nome: str, conteudo: str, resumo: str | None = None):
+    ...
+    resultado = executar(
+        """
+        INSERT INTO projeto_arquivos (projeto_id, nome, conteudo, resumo)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (projeto_id, nome)
+        DO UPDATE SET
+            conteudo = EXCLUDED.conteudo,
+            resumo = EXCLUDED.resumo,
+            atualizado_em = now()
+        RETURNING *
+        """,
+        (projeto_id, nome, conteudo, resumo),
+    )
+    
     """
     Cria um arquivo ou atualiza seu conteúdo se já existir no projeto.
     A data de criação é preservada e a data de atualização é renovada.
@@ -319,7 +330,7 @@ def listar_arquivos_com_conteudo(projeto_id: int):
     """Nome e conteúdo de todos os arquivos do projeto (para montar o contexto da IA)."""
     resultado = executar(
         """
-        SELECT nome, conteudo
+        SELECT nome, conteudo, resumo
         FROM projeto_arquivos
         WHERE projeto_id = %s
         ORDER BY nome

@@ -49,10 +49,6 @@ def _historico(sessao) -> str:
 
 
 def _chamar_brain(pedido: str, chat_id: str) -> str:
-    llm.iniciar_rastreio()          # o rastreio é por thread
-    return brain.process_voz(pedido, chat_id=chat_id)
-
-def _chamar_brain(pedido: str, chat_id: str) -> str:
     print(f"[voz] ferramenta chamada: {pedido!r}")
     llm.iniciar_rastreio()          # o rastreio é por thread
     return brain.process_voz(pedido, chat_id=chat_id)
@@ -110,7 +106,6 @@ async def _da_live(ws: WebSocket, sessao_live, sessao, chat_id: str):
                 await ws.send_json({"tipo": "pensando"})
                 respostas = []
                 
-                respostas = []
                 for fc in msg.tool_call.function_calls:
                     pedido = str((fc.args or {}).get("texto", "")).strip()
                     try:

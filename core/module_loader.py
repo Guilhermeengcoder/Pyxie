@@ -61,22 +61,6 @@ def carregar_modulos() -> dict:
             print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
             continue
 
-        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
-            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
-            continue
-
-        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
-            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
-            continue
-
-        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
-            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
-            continue
-
-        if arquivo in MODULOS_LOCAIS and _sem_controle_local():
-            print(f"[module_loader] '{arquivo}' desativado (modo nuvem).")
-            continue
-
         nome_modulo = arquivo[:-3]
         caminho = f"{pasta_modulos}.{nome_modulo}"
 
