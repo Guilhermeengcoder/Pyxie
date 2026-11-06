@@ -2,7 +2,9 @@
 import asyncio
 import json
 import os
+import re
 import secrets
+import unicodedata
 
 from fastapi import APIRouter, WebSocket
 from google import genai
@@ -17,6 +19,13 @@ router = APIRouter()
 MAX_SESSOES = 1              # protege a cota gratuita
 MAX_CHUNK_BYTES = 64_000
 MAX_HISTORICO_CHARS = 3000
+
+# Timers: só vivem enquanto esta conversa por voz estiver aberta.
+MAX_TIMERS = 5
+TIMER_MIN_S = 1
+TIMER_MAX_S = 7200           # 2 horas
+MAX_ROTULO_CHARS = 60
+
 _ativas = 0
 
 
@@ -65,6 +74,77 @@ def _gravar_turno(sessao, fala_usuario: str, fala_pyxie: str):
     sessao.regeneracao_pergunta = None   # o botão "regenerar" não mexe em fala
 
 
+def _limpar_rotulo(valor) -> str:
+    """O rótulo vai dentro de um texto enviado ao modelo: sem quebras nem colchetes."""
+    texto = re.sub(r"[\r\n\[\]]+", " ", str(valor or "")).strip()
+    return texto[:MAX_ROTULO_CHARS] or "timer"
+
+
+def _norm(texto) -> str:
+    texto = unicodedata.normalize("NFD", str(texto or "").lower())
+    texto = texto.encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", " ", texto).strip()
+
+
+def _frase_dono() -> str:
+    return _norm(os.getenv("PYXIE_FRASE_DONO"))
+
+
+def _eh_dono(sessao) -> bool:
+    return not _frase_dono() or getattr(sessao, "dono", False)
+
+
+def _tempo_falado(segundos: int) -> str:
+    m, s = divmod(segundos, 60)
+    h, m = divmod(m, 60)
+    partes = []
+    if h:
+        partes.append(f"{h} hora" + ("s" if h > 1 else ""))
+    if m:
+        partes.append(f"{m} minuto" + ("s" if m > 1 else ""))
+    if s:
+        partes.append(f"{s} segundo" + ("s" if s > 1 else ""))
+    return " e ".join(partes) or "0 segundo"
+
+
+async def _timer(ws: WebSocket, estado: dict, segundos: int, rotulo: str):
+    """Espera e avisa. Se a conversa já tiver fechado, falha em silêncio."""
+    await asyncio.sleep(segundos)
+    print(f"[voz] timer terminou: {rotulo!r}")
+    try:
+        await ws.send_json({"tipo": "timer", "rotulo": rotulo})
+        await estado["live"].send_realtime_input(
+            text=(
+                f"[sistema] O timer '{rotulo}' terminou. "
+                "Avise o usuário agora, em uma frase curta."
+            )
+        )
+    except Exception as e:
+        print(f"[voz] não consegui avisar do timer: {e!r}")
+
+
+def _criar_timer(ws, estado: dict, timers: set, args: dict) -> str:
+    """Valida os argumentos e agenda. Devolve o texto que vai ao modelo."""
+    try:
+        segundos = int(float(args.get("segundos", 0)))
+    except (TypeError, ValueError):
+        return "Não entendi a duração do timer."
+
+    if segundos < TIMER_MIN_S or segundos > TIMER_MAX_S:
+        return "Só consigo timers entre 1 segundo e 2 horas."
+
+    timers.difference_update({t for t in timers if t.done()})
+    if len(timers) >= MAX_TIMERS:
+        return "Já existem timers demais ativos."
+
+    rotulo = _limpar_rotulo(args.get("rotulo"))
+    tarefa = asyncio.create_task(_timer(ws, estado, segundos, rotulo))
+    timers.add(tarefa)
+
+    print(f"[voz] timer definido: {segundos}s ({rotulo!r})")
+    return f"Timer '{rotulo}' definido para {_tempo_falado(segundos)}."
+
+
 async def _do_navegador(ws: WebSocket, sessao_live):
     """Navegador -> Live: áudio (binário) e comandos (JSON)."""
     while True:
@@ -91,10 +171,37 @@ async def _do_navegador(ws: WebSocket, sessao_live):
             await sessao_live.send_realtime_input(text=str(cmd["texto"])[:2000])
 
 
-async def _da_live(ws: WebSocket, sessao_live, sessao, chat_id: str):
-    """Live -> navegador: áudio, legendas, ferramenta e gravação na STM."""
+async def _executar_ferramenta(fc, ws, estado: dict, chat_id: str, timers: set):
+    """Roda UMA chamada de ferramenta. Devolve (texto, passou_pelo_brain)."""
+    args = fc.args or {}
+
+    if fc.name == "hora_atual":
+        return live.hora_atual_texto(), False
+
+    if fc.name == "definir_timer":
+        return _criar_timer(ws, estado, timers, args), False
+
+    if fc.name == "perguntar_pyxie":
+        pedido = str(args.get("texto", "")).strip()
+        if not pedido:
+            return "Não entendi o pedido.", False
+        try:
+            resultado = await asyncio.to_thread(_chamar_brain, pedido, chat_id)
+        except Exception as e:
+            print(f"[voz] erro no brain: {e}")
+            resultado = "Não consegui processar isso agora."
+        return resultado, True
+
+    print(f"[voz] ferramenta desconhecida: {fc.name!r}")
+    return "Essa ferramenta não existe.", False
+
+
+async def _da_live(ws: WebSocket, estado: dict, sessao, chat_id: str, timers: set):
+    """Live -> navegador. Devolve "promover" quando a frase do dono for dita."""
+    sessao_live = estado["live"]
+    frase = _frase_dono()
     fala_usuario, fala_pyxie = "", ""
-    usou_ferramenta = False
+    usou_brain = False   # o brain já grava o turno na STM; nos outros casos gravamos aqui
 
     while True:                              # receive() para a cada turno
         async for msg in sessao_live.receive():
@@ -102,23 +209,18 @@ async def _da_live(ws: WebSocket, sessao_live, sessao, chat_id: str):
                 await ws.send_bytes(msg.data)
 
             if msg.tool_call:
-                usou_ferramenta = True
                 await ws.send_json({"tipo": "pensando"})
                 respostas = []
-                
+
                 for fc in msg.tool_call.function_calls:
-                    pedido = str((fc.args or {}).get("texto", "")).strip()
-                    try:
-                        resultado = (
-                            await asyncio.to_thread(_chamar_brain, pedido, chat_id)
-                            if pedido else "Não entendi o pedido."
-                        )
-                    except Exception as e:
-                        print(f"[voz] erro no brain: {e}")
-                        resultado = "Não consegui processar isso agora."
+                    resultado, do_brain = await _executar_ferramenta(
+                        fc, ws, estado, chat_id, timers
+                    )
+                    usou_brain = usou_brain or do_brain
                     respostas.append(types.FunctionResponse(
                         id=fc.id, name=fc.name, response={"resultado": resultado}
                     ))
+
                 await sessao_live.send_tool_response(function_responses=respostas)
                 continue
 
@@ -128,6 +230,16 @@ async def _da_live(ws: WebSocket, sessao_live, sessao, chat_id: str):
 
             if sc.input_transcription and sc.input_transcription.text:
                 fala_usuario += sc.input_transcription.text
+
+                if frase and not _eh_dono(sessao) and frase in _norm(fala_usuario):
+                    sessao.dono = True
+                    print("[voz] dono reconhecido pela frase")
+                    await ws.send_json(
+                        {"tipo": "legenda", "quem": "voce", "texto": ""}
+                    )
+                    await ws.send_json({"tipo": "interrompido"})
+                    return "promover"
+
                 await ws.send_json(
                     {"tipo": "legenda", "quem": "voce", "texto": fala_usuario}
                 )
@@ -143,9 +255,9 @@ async def _da_live(ws: WebSocket, sessao_live, sessao, chat_id: str):
                 await ws.send_json({"tipo": "interrompido"})
 
             if sc.turn_complete:
-                if not usou_ferramenta:
+                if not usou_brain:
                     _gravar_turno(sessao, fala_usuario, fala_pyxie)
-                fala_usuario, fala_pyxie, usou_ferramenta = "", "", False
+                fala_usuario, fala_pyxie, usou_brain = "", "", False
                 await ws.send_json({"tipo": "fim_turno"})
 
 
@@ -179,43 +291,77 @@ async def voz(ws: WebSocket):
     chat_id = str(inicio.get("chat_id") or "default")
     sessao = brain.sessions.get(chat_id)
 
+    timers: set = set()
+    estado = {"live": None}
+    saudar = False
+
     _ativas += 1
     try:
         client = genai.Client(api_key=chave)
-        config = live.montar_config(historico=_historico(sessao), com_ferramenta=True)
 
-        async with client.aio.live.connect(
-            model=live.LIVE_MODEL, config=config
-        ) as sessao_live:
-            await ws.send_json({"tipo": "pronto"})
-
-            tarefas = [
-                asyncio.create_task(_do_navegador(ws, sessao_live)),
-                asyncio.create_task(_da_live(ws, sessao_live, sessao, chat_id)),
-            ]
-            _, pendentes = await asyncio.wait(
-                tarefas, return_when=asyncio.FIRST_COMPLETED
+        while True:
+            config = live.montar_config(
+                historico=_historico(sessao),
+                com_ferramenta=True,
+                dono=_eh_dono(sessao),
             )
-            for t in pendentes:
-                t.cancel()
-            await asyncio.gather(*pendentes, return_exceptions=True)
+            reconectar = False
 
-            for t in tarefas:
-                if t.done() and not t.cancelled() and t.exception():
-                    print(f"[voz] encerrada: {t.exception()!r}")
+            async with client.aio.live.connect(
+                model=live.LIVE_MODEL, config=config
+            ) as sessao_live:
+                estado["live"] = sessao_live
+                await ws.send_json({"tipo": "pronto"})
+
+                if saudar:
+                    saudar = False
+                    await sessao_live.send_realtime_input(
+                        text=(
+                            "[sistema] O usuário foi reconhecido como o Guilherme. "
+                            "Cumprimente-o em uma frase curta."
+                        )
+                    )
+
+                t_nav = asyncio.create_task(_do_navegador(ws, sessao_live))
+                t_live = asyncio.create_task(
+                    _da_live(ws, estado, sessao, chat_id, timers)
+                )
+                _, pendentes = await asyncio.wait(
+                    [t_nav, t_live], return_when=asyncio.FIRST_COMPLETED
+                )
+                for t in pendentes:
+                    t.cancel()
+                await asyncio.gather(*pendentes, return_exceptions=True)
+
+                for t in (t_nav, t_live):
+                    if t.done() and not t.cancelled() and t.exception():
+                        print(f"[voz] encerrada: {t.exception()!r}")
+
+                if (
+                    t_live.done()
+                    and not t_live.cancelled()
+                    and t_live.exception() is None
+                    and t_live.result() == "promover"
+                ):
+                    reconectar = True
+                    saudar = True
+
+            if not reconectar:
+                break
     except Exception as e:
         print(f"[voz] erro: {e!r}")
     finally:
         _ativas -= 1
+
+        # Timers não sobrevivem à conversa.
+        for t in timers:
+            t.cancel()
+        if timers:
+            await asyncio.gather(*timers, return_exceptions=True)
+
         try:
             # O front reabre a conexão; o histórico volta da STM.
             await ws.send_json({"tipo": "encerrada"})
             await ws.close()
         except Exception:
             pass
-        
-def _chamar_brain(pedido: str, chat_id: str) -> str:
-    print(f"[voz] ferramenta chamada: {pedido!r}")
-    llm.iniciar_rastreio()
-    return brain.process_voz(pedido, chat_id=chat_id)
-

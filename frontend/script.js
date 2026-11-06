@@ -4674,8 +4674,15 @@ async function iniciarVoz() {
         vozFonte = vozCtxEntrada.createMediaStreamSource(vozStream);
         vozNo = new AudioWorkletNode(vozCtxEntrada, "captura-pcm");
 
+        // Cada bloco de 100 ms de PCM16 vai direto para o servidor.
+        vozNo.port.onmessage = (evento) => {
+            if (vozWs && vozPronta && vozWs.readyState === WebSocket.OPEN) {
+                vozWs.send(evento.data);
+            }
+        };
+
         vozFonte.connect(vozNo);
-        vozNo.connect(vozCtxEntrada.destination);   // saída silenciosa; mantém o nó ativo
+        vozNo.connect(vozCtxEntrada.destination);
 
         if (!vozAtiva) {
             // O usuário encerrou enquanto o microfone abria.

@@ -4224,3 +4224,30 @@ button:focus-visible {
     font-size: 16px;
     cursor: pointer;
 }
+
+.camera-btn {
+    padding: 11px 20px;
+    border: 1px solid var(--borda-input);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--texto);
+    font: inherit;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.camera-btn:hover {
+    background: var(--bg-hover);
+}
+
+.camera-btn-principal {
+    border-color: var(--acento);
+    background: var(--acento);
+    color: #fff;
+    font-weight: 600;
+}
+
+.camera-btn-principal:hover {
+    background: var(--acento-hover);
+}
