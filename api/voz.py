@@ -13,6 +13,7 @@ from google.genai import types
 from core import live, llm
 from core.brain import brain
 from core.filtro_segredos import detectar_segredos
+from core import usage_servicos
 
 router = APIRouter()
 
@@ -202,9 +203,28 @@ async def _da_live(ws: WebSocket, estado: dict, sessao, chat_id: str, timers: se
     frase = _frase_dono()
     fala_usuario, fala_pyxie = "", ""
     usou_brain = False   # o brain já grava o turno na STM; nos outros casos gravamos aqui
+    ultimo_total = 0     # acumulado da sessão; zera sozinho quando a Live reconecta
 
     while True:                              # receive() para a cada turno
         async for msg in sessao_live.receive():
+            
+            um = getattr(msg, "usage_metadata", None)
+            if um:
+                total = getattr(um, "total_token_count", None)
+                if isinstance(total, int) and total > 0:
+                    delta = total - ultimo_total
+                    ultimo_total = total   # se o total cair (janela deslizante), só vira a nova base
+                    if delta > 0:
+                        try:
+                            await asyncio.to_thread(
+                                usage_servicos.registrar, "gemini_live", delta
+                            )
+                        except Exception as e:
+                            print(f"[voz] não consegui registrar o uso: {e!r}")
+                    f"total={getattr(um, 'total_token_count', None)} "
+                    f"entrada={getattr(um, 'prompt_token_count', None)} "
+                    f"saida={getattr(um, 'response_token_count', None)}"
+            
             if msg.data:
                 await ws.send_bytes(msg.data)
 
