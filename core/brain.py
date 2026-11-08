@@ -356,29 +356,46 @@ def usar_tavily() -> bool:
 
     return True
 
-def decidir_busca(mensagem: str, ultima_pergunta=None):
+def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = ""):
     """Roteador: decide se a resposta precisa de fonte e monta a consulta.
     Devolve {"busca": bool, "consulta": str} ou None se falhar."""
     hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")
+
+    bloco_memoria = (
+        f"Chaves da memória fixa da PYXIE (só os nomes): {chaves_memoria}\n"
+        "Se o pedido parece se referir a algo que o usuário pediu para você "
+        "guardar (comandos, atalhos, preferências, dados pessoais), busca=false.\n"
+        if chaves_memoria else ""
+    )
+
     instrucao = (
         "Tarefa técnica, EXCEÇÃO à regra de responder em português: "
         "a consulta deve estar em INGLÊS.\n"
         'Responda SOMENTE com JSON: {"busca": true, "consulta": "query curta"}\n'
         f"Hoje é {hoje}. Seu conhecimento de treino é anterior a isso.\n"
-        "busca=true se a resposta depende de fatos que podem ter mudado ou "
-        "dos quais você não tem certeza absoluta (pessoas, eventos, rankings, "
-        "preços, leis, produtos, esportes, notícias, qualquer ano recente), "
-        "OU se o usuário contesta a resposta anterior "
-        "(nesse caso use a pergunta anterior na consulta).\n"
-        "busca=false só para conversa, opinião, criação, código, matemática "
-        "ou conhecimento atemporal. Em dúvida: true.\n\n"
+        "busca=false quando: for conversa, opinião, criação, código, matemática, "
+        "conhecimento atemporal; OU o usuário estiver descrevendo um problema, "
+        "pedindo ajuda técnica ou falando sobre um recurso da PYXIE; OU pedir para "
+        "gerar/criar imagem, desenho ou gráfico (outra etapa cuida disso).\n"
+        "busca=true se a resposta depende de fatos que podem ter mudado ou dos "
+        "quais você não tem certeza absoluta (pessoas, eventos, rankings, preços, "
+        "leis, produtos, esportes, notícias, qualquer ano recente), OU se o "
+        "usuário contesta a resposta anterior (use a pergunta anterior na consulta).\n"
+        "Em dúvida entre as duas: true, exceto nos casos de busca=false acima.\n"
+        f"{bloco_memoria}\n"
         f"Pergunta anterior: {ultima_pergunta or '(nenhuma)'}\n"
         f"Mensagem: {mensagem}"
     )
     
-    
+    print("[DEBUG roteador] chaves_memoria=", repr(chaves_memoria[:200]))
+
     try:
-        texto = perguntar_llm(instrucao, "(tarefa técnica, sem cumprimentos)", leve=True)
+        texto = perguntar_llm(
+            instrucao,
+            "(tarefa técnica, sem cumprimentos)",
+            leve=True,
+            sensivel=bool(chaves_memoria),  # nomes da memória só vão a provedor confiável
+        )
         achado = re.search(r"\{.*\}", texto or "", re.DOTALL)
         dados = json.loads(achado.group(0)) if achado else None
         if isinstance(dados, dict) and "busca" in dados:
@@ -389,30 +406,11 @@ def decidir_busca(mensagem: str, ultima_pergunta=None):
     return None
 
 
-VERBOS_IMAGEM = (
-    r"(?:gere|gera|gerar|crie|cria|criar|desenhe|desenha|desenhar|"
-    r"fa[cç]a|faz|fazer|monte|mostre|mostra)"
-)
-SUBSTANTIVO_IMAGEM = r"(?:imagem|foto|ilustra[cç][aã]o|desenho|arte|logo|logotipo)"
-
-PADRAO_IMAGEM = re.compile(
-    rf"(?:^|[\s,.;!?])(?:(?:me|pra\s+mim|para\s+mim)\s+)?{VERBOS_IMAGEM}\s+"
-    rf"(?:uma?\s+)?{SUBSTANTIVO_IMAGEM}\s*"
-    r"(?:de|do|da|com|d[eo]s?)?\s*(.+)$",
-    re.IGNORECASE | re.DOTALL,
-)
-
 FERRAMENTA = re.compile(
     r"\[\[\s*(pesquisar|imagem|grafico)\s*:\s*(.+?)\s*\]\]",
     re.IGNORECASE | re.DOTALL,
 )
 
-# Perguntas sobre a capacidade não devem gerar imagem.
-PERGUNTA_CAPACIDADE = re.compile(
-    r"\b(consegue|voce\s+consegue|você\s+consegue|sabe|pode)\b.*\b(gerar|criar|desenhar)\b"
-    r".*\?\s*$",
-    re.IGNORECASE | re.DOTALL,
-)
 
 REGRA_AUTO = (
     "\nRegra extra: proponha uma operação SOMENTE se o pedido for um fato duradouro "
@@ -431,7 +429,7 @@ REGRA_PESQUISA = (
     'Se nada servir, responda {"op": "none"}.'
 )
 
-LIMITE_MEMORIA_FIXA = 4500
+LIMITE_MEMORIA_FIXA = 7000
 
 # Histórico máximo (em caracteres) quando a mensagem é código/texto
 # extenso: o Groq gratuito aceita poucos tokens por pedido.
@@ -519,6 +517,33 @@ class Brain:
             return nome
 
         return sessao.context.get_pessoa() or obter_usuario()
+    
+    def _chaves_memoria(self) -> str:
+        if not provedor_confiavel():
+            return ""
+        chaves = []
+        itens = [
+            (k, v) for k, v in self.memoria_fixa.items()
+            if k not in memory_json.PROTEGIDAS
+        ]
+        itens.sort(key=lambda kv: kv[0] == "profile")  # profile por último
+        for k, v in itens:
+            chaves.append(k)
+            if isinstance(v, dict):
+                chaves.extend(f"{k}.{sub}" for sub in list(v)[:15])
+        return ", ".join(chaves)[:2500]
+    
+    def _mensagem_cita_chave_da_memoria(self, msg_norm: str) -> bool:
+        """True se a mensagem cita o nome de uma subchave da memória (ex.: 'deploy')."""
+        palavras = set(msg_norm.split())
+        for secao, valor in self.memoria_fixa.items():
+            if secao in memory_json.PROTEGIDAS or not isinstance(valor, dict):
+                continue
+            for sub in valor:
+                nome = normalizar(sub.replace("_", " "))
+                if nome and len(nome) >= 4 and all(p in palavras for p in nome.split()):
+                    return True
+        return False
 
     # ----------------------------------------------------------
     # EDIÇÃO DA MEMÓRIA FIXA (memory.json)
@@ -607,11 +632,29 @@ class Brain:
         print(f"[memória pesquisa] gravou: {op}")
         return {"ok": True, "mensagem": f"Guardei: {resumo[:200]}"}
     
+    def _conversa_recente(self, sessao, n=4, max_chars=1500) -> str:
+        if sessao is None:
+            return ""
+        msgs = sessao.stm._messages[:-1][-n:]   # sem a mensagem atual
+        linhas = []
+        for m in msgs:
+            quem = "Usuário" if m.role == "user" else "PYXIE"
+            linhas.append(f"{quem}: {m.content}")
+        return "\n".join(linhas)[-max_chars:]
+
+    def _ultimo_bloco_da_pyxie(self, sessao) -> str:
+        if sessao is None:
+            return ""
+        for m in reversed(sessao.stm._messages[:-1]):
+            if m.role == "assistant":
+                blocos = re.findall(r"```[^\n]*\n(.*?)```", m.content, re.DOTALL)
+                return (blocos[-1] if blocos else m.content).strip()[:1500]
+        return ""
+    
     def _editar_memoria_fixa(self, message, sessao=None):
         if sessao is not None and sessao.restrito:
             return "Por voz eu não altero minha memória. Peça pelo chat de texto."
-           
-        
+
         # A edição manda o JSON inteiro da memória dentro da pergunta,
         # então só pode rodar em provedor de confiança.
         if not provedor_confiavel():
@@ -626,15 +669,23 @@ class Brain:
         except ValueError as e:
             return f"Não consegui ler a memória fixa ({e}). Não alterei nada."
 
-        # O contexto não vazio evita que o prompt peça um cumprimento
+        conversa = self._conversa_recente(sessao)
+        bloco = self._ultimo_bloco_da_pyxie(sessao)
+        if bloco:
+            conversa += (
+                "\n\nÚLTIMO BLOCO DE CÓDIGO/TEXTO ENVIADO PELA PYXIE "
+                "(é o que 'esse comando', 'ele' e 'isso' costumam significar):\n"
+                + bloco
+            )
+
         try:
             texto = perguntar_llm(
-                memory_json.montar_prompt_edicao(message, dados),
+                memory_json.montar_prompt_edicao(message, dados, conversa=conversa),
                 "(tarefa técnica, sem cumprimentos)",
                 sensivel=True,
             )
-            
-        except Exception:
+        except Exception as e:
+            print(f"[edição memória] {e}")
             texto = None
 
         if not texto:
@@ -644,6 +695,8 @@ class Brain:
         if not op:
             if memory_json.ja_existe(texto):
                 return "Isso já está guardado na minha memória."
+            if "sem_conteudo" in texto:
+                return "Não achei na conversa o que guardar. Pode colar o conteúdo?"
             return (
                 "Isso não me pareceu uma informação para guardar. "
                 "Pode me dizer de outro jeito?"
@@ -1036,15 +1089,6 @@ class Brain:
     # GERAÇÃO DE IMAGEM (Cloudflare)
     # ----------------------------------------------------------
 
-    def _responder_com_imagem(self, sessao, mensagem_original, mensagem_para_ia):
-        achado = PADRAO_IMAGEM.search(mensagem_para_ia)
-        if not achado:
-            return None
-        descricao = achado.group(1).strip()
-        if not descricao:
-            return None
-        return self._gerar_imagem(sessao, mensagem_original, descricao)
-
     def _gerar_imagem(self, sessao, mensagem_original, descricao):
         if detectar_segredos(descricao):
             texto = (
@@ -1109,7 +1153,10 @@ class Brain:
         sessao.stm.add_message("user", mensagem_original)
         sessao.context.add_message(mensagem_original)
         
-        
+        decisao_busca = decidir_busca(
+        mensagem_para_ia, sessao.ultima_pergunta, self._chaves_memoria()
+        )
+
         # ------------------------------------------------------
         # CONTEÚDO EXTENSO (código, prompts, textos longos)
         # Vai direto ao LLM: sem atalhos, sem respostas fixas
@@ -1218,12 +1265,6 @@ class Brain:
             )
             self._finalizar(sessao, mensagem_original, resposta_final)
             return resposta_final
-        
-        resposta_imagem = self._responder_com_imagem(
-            sessao, mensagem_original, mensagem_para_ia
-        )
-        if resposta_imagem:
-            return resposta_imagem
         
         # --------------------------------------------------
         # LINK NA MENSAGEM (Firecrawl) — antes da decisão central
@@ -1374,12 +1415,12 @@ class Brain:
 
         if usar_tavily():
             if categoria == "internet_explicita":
-                decisao_busca = {"busca": True, "consulta": None}  # "pesquise ..." não precisa de roteador
-            elif PEDIDO_PESSOAL.search(original_message):
-                decisao_busca = {"busca": False}   # dado pessoal: vem da memória
+                decisao_busca = {"busca": True, "consulta": None}
+            elif PEDIDO_PESSOAL.search(original_message) or self._mensagem_cita_chave_da_memoria(original_message):
+                decisao_busca = {"busca": False}   # está na memória: não pesquisa
             else:
                 decisao_busca = decidir_busca(
-                    mensagem_para_ia, sessao.ultima_pergunta
+                    mensagem_para_ia, sessao.ultima_pergunta, self._chaves_memoria()
                 )
                 if decisao_busca is None:
                     # Roteador falhou: na dúvida, pesquisa em vez de responder de memória.

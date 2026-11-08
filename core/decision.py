@@ -129,24 +129,47 @@ def _checar_calculo(msg: str):
 
 def _checar_memoria(msg: str):
     msg_norm = normalizar(msg)
-    triggers = [
-        "lembre que", "guarde que", "memorize que",
-        "anota que", "liste memorias",
-        "o que voce lembra", "esqueca"
-    ]
-    for t in triggers:
-        if t in msg_norm:
-            return 1.0
+    if re.match(
+        r"^(?:(?:pyxie|por favor|entao|agora|ok)\s+)*"
+        r"(?:se lembre que|lembre que|guarde que|memorize que|"
+        r"anota que|anote que|esqueca que)\b",
+        msg_norm,
+    ):
+        return 1.0
+    if re.search(r"\b(?:liste memorias|o que voce lembra)\b", msg_norm):
+        return 1.0
+    return 0.0
+
+
+
+def _checar_launcher(msg: str):
+    msg_norm = normalizar(msg)
+    if re.match(
+        r"^(?:(?:pyxie|por favor|pf|entao|agora|ok)\s+)*"
+        r"(?:abre|abra|abrir|inicia|inicie|lanca|lance)\s+\w",
+        msg_norm,
+    ):
+        return 0.9
+    return 0.0
+
+
+def _checar_memoria(msg: str):
+    msg_norm = normalizar(msg)
+    if re.match(
+        r"^(?:(?:pyxie|por favor|entao|agora|ok)\s+)*"
+        r"(?:se lembre que|lembre que|guarde que|memorize que|"
+        r"anota que|anote que|esqueca que)\b",
+        msg_norm,
+    ):
+        return 1.0
+    if re.search(r"\b(?:liste memorias|o que voce lembra)\b", msg_norm):
+        return 1.0
     return 0.0
 
 
 def _checar_pesquisa_explicita(msg: str):
     msg_norm = normalizar(msg)
-    inicios = [
-        "pesquise", "procure", "busque",
-        "pesquise sobre", "procure sobre"
-    ]
-    if any(msg_norm.startswith(i) for i in inicios):
+    if re.match(r"^(?:pesquise|procure|busque)\b", msg_norm):
         return 1.0
     return 0.0
 
@@ -184,13 +207,11 @@ def _checar_lembrete(msg: str):
 
 def _checar_launcher(msg: str):
     msg_norm = normalizar(msg)
-    triggers = [
-        "abre", "abra", "abrir",
-        "inicia", "inicie",
-        "abre o chrome", "abra o chrome",
-        "abrir o chrome"
-    ]
-    if any(t in msg_norm for t in triggers):
+    if re.match(
+        r"^(?:(?:pyxie|por favor|pf|entao|agora|ok)\s+)*"
+        r"(?:abre|abra|abrir|inicia|inicie|lanca|lance)\s+\w",
+        msg_norm,
+    ):
         return 0.9
     return 0.0
 
