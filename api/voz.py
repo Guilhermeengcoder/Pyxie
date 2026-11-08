@@ -326,6 +326,8 @@ async def voz(ws: WebSocket):
                 dono=_eh_dono(sessao),
             )
             reconectar = False
+            
+            print(f"[voz] modelo usado: {live.LIVE_MODEL!r}")
 
             async with client.aio.live.connect(
                 model=live.LIVE_MODEL, config=config
