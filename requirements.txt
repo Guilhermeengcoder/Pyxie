@@ -1,15 +1,14 @@
-
 # ================================
 # PYXIE — dependências principais
 # ================================
 
 # API
-fastapi
-uvicorn
-pydantic
-groq
+fastapi==0.135.1
+uvicorn==0.41.0
+pydantic==2.12.5
+groq==1.5.0
 python-dotenv
-google-genai
+google-genai==2.25.0
 tzdata
 
 # HTTP e acesso à internet
@@ -29,4 +28,4 @@ psycopg[binary]
 
 matplotlib
 
-websockets
+websockets==16.0
