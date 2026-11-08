@@ -37,6 +37,9 @@ SERVICOS = {
     "cloudflare": {
         "periodo": "dia", "unidade": "neurônios", "limite_env": "CLOUDFLARE_LIMITE_DIA",
     },
+    "gemini_live": {
+        "periodo": "dia", "unidade": "tokens", "limite_env": "GEMINI_LIVE_LIMITE_DIA",
+    },
 }
 
 _lock = threading.RLock()

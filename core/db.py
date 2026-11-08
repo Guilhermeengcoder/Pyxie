@@ -174,25 +174,12 @@ def excluir_projeto(projeto_id: int) -> bool:
 # ARQUIVOS DOS PROJETOS
 # =============================================================
 
-def salvar_arquivo_projeto(projeto_id: int, nome: str, conteudo: str, resumo: str | None = None):
-    ...
-    resultado = executar(
-        """
-        INSERT INTO projeto_arquivos (projeto_id, nome, conteudo, resumo)
-        VALUES (%s, %s, %s, %s)
-        ON CONFLICT (projeto_id, nome)
-        DO UPDATE SET
-            conteudo = EXCLUDED.conteudo,
-            resumo = EXCLUDED.resumo,
-            atualizado_em = now()
-        RETURNING *
-        """,
-        (projeto_id, nome, conteudo, resumo),
-    )
-    
+def salvar_arquivo_projeto(
+    projeto_id: int, nome: str, conteudo: str, resumo: str | None = None
+):
     """
     Cria um arquivo ou atualiza seu conteúdo se já existir no projeto.
-    A data de criação é preservada e a data de atualização é renovada.
+    A data de criação é preservada e a de atualização é renovada.
     """
     nome = str(nome or "").strip()
     conteudo = str(conteudo)
@@ -205,19 +192,16 @@ def salvar_arquivo_projeto(projeto_id: int, nome: str, conteudo: str, resumo: st
 
     resultado = executar(
         """
-        INSERT INTO projeto_arquivos (
-            projeto_id,
-            nome,
-            conteudo
-        )
-        VALUES (%s, %s, %s)
+        INSERT INTO projeto_arquivos (projeto_id, nome, conteudo, resumo)
+        VALUES (%s, %s, %s, %s)
         ON CONFLICT (projeto_id, nome)
         DO UPDATE SET
             conteudo = EXCLUDED.conteudo,
+            resumo = EXCLUDED.resumo,
             atualizado_em = now()
         RETURNING *
         """,
-        (projeto_id, nome, conteudo),
+        (projeto_id, nome, conteudo, resumo),
     )
 
     return resultado[0] if resultado else None

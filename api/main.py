@@ -341,11 +341,11 @@ def buscar_arquivo_projeto(projeto_id: int, nome: str):
 def salvar_arquivo_projeto(projeto_id: int, arquivo: ArquivoProjeto):
     if db.buscar_projeto(projeto_id) is None:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
-    
+
     if len(arquivo.conteudo) > 500_000:
         raise HTTPException(status_code=413, detail="Arquivo grande demais (máximo 500 KB).")
 
-        achados = detectar_segredos(arquivo.conteudo)
+    achados = detectar_segredos(arquivo.conteudo)
     if achados:
         raise HTTPException(
             status_code=400,

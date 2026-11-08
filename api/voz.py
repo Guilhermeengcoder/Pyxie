@@ -173,28 +173,47 @@ async def _do_navegador(ws: WebSocket, sessao_live):
 
 
 async def _executar_ferramenta(fc, ws, estado: dict, chat_id: str, timers: set):
-    """Roda UMA chamada de ferramenta. Devolve (texto, passou_pelo_brain)."""
+    """Roda UMA chamada de ferramenta. Devolve (texto, passou_pelo_brain, extra)."""
     args = fc.args or {}
 
     if fc.name == "hora_atual":
-        return live.hora_atual_texto(), False
+        return live.hora_atual_texto(), False, None
 
     if fc.name == "definir_timer":
-        return _criar_timer(ws, estado, timers, args), False
+        return _criar_timer(ws, estado, timers, args), False, None
 
     if fc.name == "perguntar_pyxie":
         pedido = str(args.get("texto", "")).strip()
         if not pedido:
-            return "Não entendi o pedido.", False
+            return "Não entendi o pedido.", False, None
+
+        sessao = brain.sessions.get(chat_id)
+        sessao.imagem_pendente = None   # o brain preenche se gerar imagem/gráfico
+
         try:
             resultado = await asyncio.to_thread(_chamar_brain, pedido, chat_id)
         except Exception as e:
             print(f"[voz] erro no brain: {e}")
-            resultado = "Não consegui processar isso agora."
-        return resultado, True
+            return "Não consegui processar isso agora.", True, None
+
+        imagem_id = sessao.imagem_pendente
+        sessao.imagem_pendente = None
+
+        mostrar = bool(args.get("mostrar_no_chat")) or bool(imagem_id)
+        extra = (
+            {
+                "tipo": "resultado",
+                "pedido": pedido,
+                "texto": resultado,
+                "imagem_id": imagem_id,
+            }
+            if mostrar and resultado
+            else None
+        )
+        return resultado, True, extra
 
     print(f"[voz] ferramenta desconhecida: {fc.name!r}")
-    return "Essa ferramenta não existe.", False
+    return "Essa ferramenta não existe.", False, None
 
 
 async def _da_live(ws: WebSocket, estado: dict, sessao, chat_id: str, timers: set):
@@ -233,10 +252,12 @@ async def _da_live(ws: WebSocket, estado: dict, sessao, chat_id: str, timers: se
                 respostas = []
 
                 for fc in msg.tool_call.function_calls:
-                    resultado, do_brain = await _executar_ferramenta(
+                    resultado, do_brain, extra = await _executar_ferramenta(
                         fc, ws, estado, chat_id, timers
                     )
                     usou_brain = usou_brain or do_brain
+                    if extra:
+                        await ws.send_json(extra)
                     respostas.append(types.FunctionResponse(
                         id=fc.id, name=fc.name, response={"resultado": resultado}
                     ))

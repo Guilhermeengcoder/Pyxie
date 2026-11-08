@@ -3704,6 +3704,14 @@ function atualizarServicos(todos) {
     preencherServico("tav", todos.tavily, "créditos");
     preencherServico("fc", todos.firecrawl, "créditos");
     preencherServico("cf", todos.cloudflare, "neurônios");
+    preencherServico("gl", todos.gemini_live, "tokens");
+
+    const elGlReset = document.getElementById("uso-gl-reset");
+    if (elGlReset && todos.gemini_live) {
+        elGlReset.textContent = Number.isFinite(todos.gemini_live.reset_s)
+            ? formatarResetDiario(todos.gemini_live.reset_s)
+            : "";
+    }
 
     const elTavReset = document.getElementById("uso-tav-reset");
     if (elTavReset && todos.tavily) {
@@ -4478,7 +4486,55 @@ function tocarPcmVoz(arrayBuffer) {
     };
 }
 
+// Três bipes curtos, tocados direto no contexto de saída.
+function tocarBipeVoz() {
+    if (!vozCtxSaida) {
+        return;
+    }
+
+    const inicio = vozCtxSaida.currentTime;
+
+    for (let i = 0; i < 3; i++) {
+        const t = inicio + i * 0.25;
+        const osc = vozCtxSaida.createOscillator();
+        const ganho = vozCtxSaida.createGain();
+
+        osc.type = "sine";
+        osc.frequency.value = 880;
+
+        ganho.gain.setValueAtTime(0.0001, t);
+        ganho.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+        ganho.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+
+        osc.connect(ganho);
+        ganho.connect(vozCtxSaida.destination);
+
+        osc.start(t);
+        osc.stop(t + 0.2);
+    }
+}
+
+
 // ----- WebSocket -----
+
+function adicionarResultadoVozAoChat(msg) {
+    const conversa = estado.conversas.find(c => c.id === vozChatId);
+
+    if (!conversa || !msg.texto) {
+        return;
+    }
+
+    if (msg.pedido) {
+        registrarMensagem(conversa, "usuario", msg.pedido);
+    }
+
+    registrarMensagem(conversa, "pyxie", msg.texto, null, msg.imagem_id || null);
+
+    // O overlay fica por cima do #chat, que pode ser redesenhado por baixo dele.
+    if (estado.ativa === conversa.id) {
+        renderizarMensagens();
+    }
+}
 
 function abrirWsVoz() {
     const protocolo = location.protocol === "https:" ? "wss" : "ws";
@@ -4528,6 +4584,10 @@ function abrirWsVoz() {
                 definirStatusVoz("Pesquisando...");
                 break;
 
+            case "resultado":
+                adicionarResultadoVozAoChat(msg);
+                break;
+
             case "legenda":
                 // O servidor manda o texto acumulado do turno: substitui.
                 if (msg.quem === "voce") {
@@ -4549,6 +4609,16 @@ function abrirWsVoz() {
             case "fim_turno":
                 vozTurnoFechado = true;
                 definirStatusVoz("Ouvindo...");
+                break;
+
+            case "timer":
+                tocarBipeVoz();
+                definirStatusVoz("Timer: " + (msg.rotulo || "timer"));
+                mostrarAviso(
+                    "⏰ Timer \"" + (msg.rotulo || "timer") + "\" terminou.",
+                    8000,
+                    "info"
+                );
                 break;
 
             default:
@@ -4660,7 +4730,7 @@ async function iniciarVoz() {
         vozCtxEntrada = new AudioContext();
         await Promise.all([vozCtxSaida.resume(), vozCtxEntrada.resume()]);
 
-        await vozCtxEntrada.audioWorklet.addModule("voz-worklet.js");
+        await vozCtxEntrada.audioWorklet.addModule("voz-worklet.js?v=2");
 
         vozStream = await navigator.mediaDevices.getUserMedia({
             audio: {
