@@ -4386,6 +4386,12 @@ const vozStatus = document.getElementById("voz-status");
 const vozLegendaVoce = document.getElementById("voz-legenda-voce");
 const vozLegendaPyxie = document.getElementById("voz-legenda-pyxie");
 const vozEncerrar = document.getElementById("voz-encerrar");
+const vozResultados = document.getElementById("voz-resultados");
+const vozResultadosLista = document.getElementById("voz-resultados-lista");
+const vozResultadosFechar = document.getElementById("voz-resultados-fechar");
+
+const VOZ_MAX_RESULTADOS = 8;
+let vozUrlsImagens = [];
 
 const VOZ_TAXA_SAIDA = 24000;
 const VOZ_MAX_TENTATIVAS = 3;
@@ -4517,7 +4523,82 @@ function tocarBipeVoz() {
 
 // ----- WebSocket -----
 
+// ----- Painel de resultados dentro do modo conversa -----
+
+function limparResultadosVoz() {
+    vozUrlsImagens.forEach(u => URL.revokeObjectURL(u));
+    vozUrlsImagens = [];
+
+    vozResultadosLista.replaceChildren();
+    vozResultados.hidden = true;
+    vozOverlay.classList.remove("com-resultados");
+}
+
+function mostrarResultadoNoOverlay(msg) {
+    if (!msg.texto && !msg.imagem_id) {
+        return;
+    }
+
+    const cartao = document.createElement("article");
+    cartao.className = "voz-resultado";
+
+    if (msg.pedido) {
+        const pedido = document.createElement("div");
+        pedido.className = "voz-resultado-pedido";
+        pedido.textContent = msg.pedido;
+        cartao.appendChild(pedido);
+    }
+
+    const corpo = document.createElement("div");
+    corpo.className = "message pyxie-message";
+
+    const conteudo = document.createElement("div");
+    conteudo.className = "conteudo-resposta";
+
+    if (msg.imagem_id) {
+        const figura = document.createElement("img");
+        figura.className = "imagem-gerada";
+        figura.alt = "Imagem gerada pela PYXIE";
+
+        apiFetch(`/imagens/${encodeURIComponent(msg.imagem_id)}`)
+            .then(r => {
+                if (!r.ok) throw new Error(r.status);
+                return r.blob();
+            })
+            .then(blob => {
+                const url = URL.createObjectURL(blob);
+                vozUrlsImagens.push(url);
+                figura.src = url;
+            })
+            .catch(() => figura.remove());
+
+        conteudo.appendChild(figura);
+    }
+
+    renderizarTextoComCodigo(msg.texto || "", conteudo);
+
+    corpo.appendChild(conteudo);
+    cartao.appendChild(corpo);
+    vozResultadosLista.appendChild(cartao);
+
+    while (vozResultadosLista.children.length > VOZ_MAX_RESULTADOS) {
+        vozResultadosLista.firstElementChild.remove();
+    }
+
+    vozResultados.hidden = false;
+    vozOverlay.classList.add("com-resultados");
+
+    // O resultado novo aparece no topo da área, pronto para ler.
+    cartao.scrollIntoView({ block: "start" });
+}
+
+if (vozResultadosFechar) {
+    vozResultadosFechar.addEventListener("click", limparResultadosVoz);
+}
+
 function adicionarResultadoVozAoChat(msg) {
+    mostrarResultadoNoOverlay(msg);   // <- nova linha
+
     const conversa = estado.conversas.find(c => c.id === vozChatId);
 
     if (!conversa || !msg.texto) {
@@ -4619,6 +4700,10 @@ function abrirWsVoz() {
                     8000,
                     "info"
                 );
+                break;
+
+            case "ocultar":
+                limparResultadosVoz();
                 break;
 
             default:
@@ -4810,6 +4895,7 @@ function encerrarVoz() {
         vozCtxSaida = null;
     }
 
+    limparResultadosVoz();
     vozOverlay.hidden = true;
     limparLegendasVoz();
 }

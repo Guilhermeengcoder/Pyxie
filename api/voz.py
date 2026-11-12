@@ -181,6 +181,9 @@ async def _executar_ferramenta(fc, ws, estado: dict, chat_id: str, timers: set):
 
     if fc.name == "definir_timer":
         return _criar_timer(ws, estado, timers, args), False, None
+    
+    if fc.name == "ocultar_resultados":
+        return "Pronto, escondi.", False, {"tipo": "ocultar"}
 
     if fc.name == "perguntar_pyxie":
         pedido = str(args.get("texto", "")).strip()
@@ -240,9 +243,6 @@ async def _da_live(ws: WebSocket, estado: dict, sessao, chat_id: str, timers: se
                             )
                         except Exception as e:
                             print(f"[voz] não consegui registrar o uso: {e!r}")
-                    f"total={getattr(um, 'total_token_count', None)} "
-                    f"entrada={getattr(um, 'prompt_token_count', None)} "
-                    f"saida={getattr(um, 'response_token_count', None)}"
             
             if msg.data:
                 await ws.send_bytes(msg.data)
@@ -348,8 +348,6 @@ async def voz(ws: WebSocket):
             )
             reconectar = False
             
-            print(f"[voz] modelo usado: {live.LIVE_MODEL!r}")
-
             async with client.aio.live.connect(
                 model=live.LIVE_MODEL, config=config
             ) as sessao_live:

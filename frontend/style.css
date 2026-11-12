@@ -4251,3 +4251,120 @@ button:focus-visible {
 .camera-btn-principal:hover {
     background: var(--acento-hover);
 }
+
+/* ================================
+   MODO CONVERSA — PAINEL DE RESULTADOS
+================================ */
+
+.voz-resultados[hidden] {
+    display: none;
+}
+
+.voz-resultados {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+
+    display: flex;
+    flex-direction: column;
+
+    border: 1px solid var(--px-border, #2a2a2a);
+    border-radius: 16px;
+    background: rgba(14, 13, 22, 0.85);
+
+    text-align: left;
+    overflow: hidden;
+}
+
+.voz-resultados-topo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    padding: 8px 8px 8px 16px;
+    border-bottom: 1px solid var(--px-border, #2a2a2a);
+
+    color: var(--texto-suave);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.voz-resultados-topo button {
+    width: 32px;
+    height: 32px;
+
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+
+    color: var(--texto-suave);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.voz-resultados-topo button:hover {
+    background: var(--bg-hover);
+    color: var(--texto);
+}
+
+.voz-resultados-lista {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+
+    padding: 14px 16px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.voz-resultado + .voz-resultado {
+    padding-top: 18px;
+    border-top: 1px solid var(--px-border, #2a2a2a);
+}
+
+.voz-resultado-pedido {
+    margin-bottom: 8px;
+    color: var(--texto-suave);
+    font-size: 13px;
+}
+
+/* Com resultado na tela, o orbe encolhe e o painel ocupa a altura toda */
+.voz-overlay.com-resultados {
+    align-items: stretch;
+    padding: 16px 24px;
+}
+
+.voz-overlay.com-resultados .voz-painel {
+    width: min(100%, 760px);
+    height: 100%;
+    margin: 0 auto;
+    gap: 8px;
+}
+
+.voz-overlay.com-resultados .voz-orbe {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 0;
+    box-shadow: 0 0 20px rgba(240, 45, 80, 0.3);
+}
+
+.voz-overlay.com-resultados .voz-legenda {
+    min-height: 0;
+    max-height: 3.4em;
+    overflow: hidden;
+    font-size: 14px;
+}
+
+.voz-overlay.com-resultados .voz-dica {
+    display: none;
+}
+
+@media (max-width: 800px) {
+    .voz-overlay.com-resultados {
+        padding: 12px;
+    }
+}

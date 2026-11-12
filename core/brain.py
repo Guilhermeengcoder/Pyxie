@@ -28,6 +28,7 @@ from core.chat_session import SessionManager, ChatSession
 from core import memory_json
 from core import tavily_search
 from core.filtro_segredos import detectar_segredos
+from core import imagem_web
 
 
 from core.llm_erros import (
@@ -323,6 +324,7 @@ def preparar_prompt_imagem(descricao: str) -> str:
         resposta_invalida = (
             not prompt
             or re.search(r"[ãõçáéíóúâêô]", prompt, re.I)
+            or re.match(r"(?i)^(?:i['’]m sorry|sorry|i need|i can['’]?t|i cannot|as an ai)", prompt)
             or prompt.lower().startswith(
                 ("here is", "here's", "the prompt is", "prompt:")
             )
@@ -356,48 +358,85 @@ def usar_tavily() -> bool:
 
     return True
 
-def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = ""):
-    """Roteador: decide se a resposta precisa de fonte e monta a consulta.
-    Devolve {"busca": bool, "consulta": str} ou None se falhar."""
+def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "", conversa: str = ""):
+    """Roteador: decide entre imagem, busca ou nenhuma das duas.
+    Devolve {"acao", "busca", "consulta", "descricao"} ou None se falhar."""
     hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")
 
     bloco_memoria = (
         f"Chaves da memória fixa da PYXIE (só os nomes): {chaves_memoria}\n"
         "Se o pedido parece se referir a algo que o usuário pediu para você "
-        "guardar (comandos, atalhos, preferências, dados pessoais), busca=false.\n"
+        "guardar (comandos, atalhos, preferências, dados pessoais), acao=nenhuma.\n"
         if chaves_memoria else ""
+    )
+
+    bloco_conversa = (
+        f"Conversa recente (só para entender o contexto):\n{conversa}\n\n"
+        if conversa else ""
     )
 
     instrucao = (
         "Tarefa técnica, EXCEÇÃO à regra de responder em português: "
-        "a consulta deve estar em INGLÊS.\n"
-        'Responda SOMENTE com JSON: {"busca": true, "consulta": "query curta"}\n'
+        "o campo consulta deve estar em INGLÊS; os outros campos ficam no "
+        "idioma do usuário.\n"
+        'Responda SOMENTE com JSON: {"acao": "imagem" | "mostrar_imagem" | "grafico" | "busca" | "nenhuma", '
+        '"consulta": "query curta em inglês", "descricao": "o que desenhar", '
+        '"imagens": [{"rotulo": "nome curto", "consulta": "query em inglês"}], '
+        '"grafico": {"tipo": "barras|linha|pizza", "titulo": "...", '
+        '"rotulos": ["..."], "valores": [0], "unidade": "R$", "renda": null}}\n'
         f"Hoje é {hoje}. Seu conhecimento de treino é anterior a isso.\n"
-        "busca=false quando: for conversa, opinião, criação, código, matemática, "
-        "conhecimento atemporal; OU o usuário estiver descrevendo um problema, "
-        "pedindo ajuda técnica ou falando sobre um recurso da PYXIE; OU pedir para "
-        "gerar/criar imagem, desenho ou gráfico (outra etapa cuida disso).\n"
-        "busca=true se a resposta depende de fatos que podem ter mudado ou dos "
-        "quais você não tem certeza absoluta (pessoas, eventos, rankings, preços, "
-        "leis, produtos, esportes, notícias, qualquer ano recente), OU se o "
-        "usuário contesta a resposta anterior (use a pergunta anterior na consulta).\n"
-        "Em dúvida entre as duas: true, exceto nos casos de busca=false acima.\n"
+        "Escolha UMA acao:\n"
+        '- "imagem": SOMENTE se o usuário pede que você CRIE, gere ou desenhe '
+        "algo inventado ou artístico (personagem, cena, logo novo, arte). Em "
+        "descricao, escreva só o conteúdo a desenhar, em português, com as "
+        "palavras do usuário (sem 'gere', 'crie' etc.). Gráficos NÃO são imagem. "
+        "Se ele apenas fala sobre imagens, tira dúvida, pergunta se você "
+        'consegue, reclama de um erro ou pede ajuda técnica, use "nenhuma".\n'
+        '- "mostrar_imagem": o usuário quer VER fotos ou imagens de algo que '
+        "já existe (bandeiras, países, animais, lugares, monumentos, objetos, "
+        "produtos, obras, exemplos visuais), com pedidos como mostre, traga, "
+        "pesquise imagens ou 'como é'. Preencha imagens com até 4 itens, um por "
+        "coisa pedida: rotulo curto em português e consulta em INGLÊS (ex.: "
+        '{"rotulo": "Brasil", "consulta": "flag of Brazil"}). Para coisas que só '
+        'existem na imaginação (dragão de fogo), use "imagem". Para fotos de '
+        'pessoas comuns (não públicas), use "nenhuma".\n'
+        '- "grafico": o usuário pede um gráfico (barras, linha ou pizza) e deu '
+        "os dados na própria mensagem. Preencha o campo grafico: rótulos curtos "
+        "em português, valores só números (sem R$, sem separador de milhar). "
+        "Se ele informou uma renda ou total além dos gastos, inclua um item "
+        '"Não invente dados: se faltarem números, '
+        'use "nenhuma".\n'
+        '- "busca": se a resposta depende de fatos que podem ter mudado ou dos '
+        "quais você não tem certeza (pessoas, eventos, rankings, preços, leis, "
+        "produtos, esportes, notícias), OU se o usuário contesta a resposta "
+        "anterior (use a pergunta anterior na consulta). Nunca use busca para "
+        "pedidos de imagem ou gráfico.\n"
+        '"grafico": {"tipo": "barras|linha|pizza", "titulo": "...", '
+        '"rotulos": ["..."], "valores": [0], "unidade": "R$", "renda": null}}\n'
+        '- "nenhuma": conversa, opinião, criação de texto, código, matemática, '
+        "conhecimento atemporal, problemas técnicos e dúvidas sobre "
+        "os recursos da PYXIE.\n"
         f"{bloco_memoria}\n"
+        f"{bloco_conversa}"
         f"Pergunta anterior: {ultima_pergunta or '(nenhuma)'}\n"
         f"Mensagem: {mensagem}"
     )
-    
-    print("[DEBUG roteador] chaves_memoria=", repr(chaves_memoria[:200]))
 
     try:
         texto = perguntar_llm(
             instrucao,
             "(tarefa técnica, sem cumprimentos)",
             leve=True,
-            sensivel=bool(chaves_memoria),  # nomes da memória só vão a provedor confiável
+            sensivel=bool(chaves_memoria),
         )
         achado = re.search(r"\{.*\}", texto or "", re.DOTALL)
         dados = json.loads(achado.group(0)) if achado else None
+
+        if isinstance(dados, dict) and "acao" in dados:
+            dados["acao"] = str(dados["acao"]).strip().lower()
+            dados["busca"] = dados["acao"] == "busca"   # compatível com o resto do brain
+            print(f"[roteador] {dados}")
+            return dados
         if isinstance(dados, dict) and "busca" in dados:
             print(f"[roteador] {dados}")
             return dados
@@ -477,6 +516,33 @@ def memoria_fixa_relevante(
 
     return "{" + ",".join(partes) + "}" if partes else ""
 
+
+PEDIDO_IMAGEM = re.compile(
+    r"\b(?:gere|gera|gerar|crie|cria|criar|desenhe|desenha|desenhar|"
+    r"faca|faz|fazer|monte|mostre|mostra|quero|queria|preciso|pode)\b"
+    r".{0,60}?\b(?:imagem|imagens|foto|fotos|desenho|ilustracao|logo|"
+    r"logotipo|wallpaper|arte)\b"
+    r"|^(?:(?:uma|um|a|o|me|pyxie)\s+)*"
+    r"(?:imagem|foto|desenho|ilustracao)\s+(?:de|do|da)\b"
+)
+NAO_E_PEDIDO_IMAGEM = re.compile(
+    r"\b(?:por que|porque|nao consegue|nao manda|nao gera|nao gerou|nao aparece)\b"
+)
+
+
+def eh_pedido_de_imagem(texto: str) -> bool:
+    """Pedido direto de imagem. Em texto longo, olha só a última linha
+    (onde fica o pedido); ignora mensagens com código."""
+    texto = str(texto or "").strip()
+    if not texto or "```" in texto:
+        return False
+
+    linhas = [l for l in texto.splitlines() if l.strip()]
+    trecho = normalizar(linhas[-1] if len(texto) > 300 else texto)
+
+    if NAO_E_PEDIDO_IMAGEM.search(trecho):
+        return False
+    return bool(PEDIDO_IMAGEM.search(trecho))
 
 # =============================================================
 # BRAIN — CLASSE ÚNICA
@@ -850,30 +916,9 @@ class Brain:
             
         if ferramentas and isinstance(response, str):
             achado = FERRAMENTA.search(response)
-            if achado:
-                acao = achado.group(1).lower()
+            
+            if achado and achado.group(1).lower() == "pesquisar":
                 pedido = achado.group(2).strip()
-
-                if acao == "imagem":
-                    return self._gerar_imagem(sessao, mensagem_original, pedido)
-                
-                if acao == "grafico":
-                    texto = "Não consegui montar o gráfico com esses dados."
-                    try:
-                        spec = json.loads(pedido)
-                        resultado = grafico.gerar(spec)
-                        sessao.imagem_pendente = resultado["id"]
-                        texto = (
-                            comentar_grafico(spec, contexto_final)
-                            or "Pronto, aqui está o gráfico."
-                        )
-                    except (ValueError, KeyError, TypeError, ErroLLM) as erro:
-                        print(f"[Gráfico] {erro}")
-
-                    resposta_final = self.personality.aplicar(texto)
-                    sessao.regeneracao_pergunta = None
-                    self._finalizar(sessao, mensagem_original, resposta_final)
-                    return resposta_final
 
                 resposta_web = self._responder_com_busca(
                     sessao, mensagem_original, mensagem_para_ia,
@@ -1088,6 +1133,42 @@ class Brain:
     # ----------------------------------------------------------
     # GERAÇÃO DE IMAGEM (Cloudflare)
     # ----------------------------------------------------------
+    
+    def _gerar_grafico(self, sessao, mensagem_original, spec):
+        contexto = self._conversa_recente(sessao, n=2, max_chars=600)
+        texto = "Não consegui montar o gráfico com esses dados."
+
+        try:
+            renda = spec.pop("renda", None)
+            if renda not in (None, ""):
+                renda = float(renda)
+
+                # Remove sobra/restante criados pelo modelo: quem calcula é o código.
+                pares = [
+                    (r, v) for r, v in zip(spec["rotulos"], spec["valores"])
+                    if not re.search(r"(?i)\b(sobra|restante|saldo|resta|livre)\b", str(r))
+                ]
+                
+                spec["rotulos"] = [r for r, _ in pares]
+                spec["valores"] = [v for _, v in pares]
+
+                gastos = sum(float(v) for v in spec["valores"])
+                if renda > gastos:
+                    spec["rotulos"].append("Sobra")
+                    spec["valores"].append(round(renda - gastos, 2))
+            resultado = grafico.gerar(spec)
+            sessao.imagem_pendente = resultado["id"]
+            texto = (
+                comentar_grafico(spec, contexto)
+                or "Pronto, aqui está o gráfico."
+            )
+        except (ValueError, KeyError, TypeError, ErroLLM) as erro:
+            print(f"[Gráfico] {erro}")
+
+        resposta_final = self.personality.aplicar(texto)
+        sessao.regeneracao_pergunta = None
+        self._finalizar(sessao, mensagem_original, resposta_final)
+        return resposta_final
 
     def _gerar_imagem(self, sessao, mensagem_original, descricao):
         if detectar_segredos(descricao):
@@ -1105,7 +1186,8 @@ class Brain:
                     chat_id=sessao.chat_id,
                 )
                 sessao.imagem_pendente = imagem["id"]
-                texto = f"Pronto! Aqui está a imagem: {descricao}."
+                resumo = descricao.strip().splitlines()[-1][:80]
+                texto = f"Pronto! Aqui está a imagem: {resumo}."
             except ErroLLM as erro:
                 print(f"[Cloudflare] {erro}")
                 texto = (
@@ -1114,6 +1196,30 @@ class Brain:
                     if isinstance(erro, (ErroCota, ErroIndisponivel))
                     else "Não consegui gerar essa imagem."
                 )
+
+        resposta_final = self.personality.aplicar(texto)
+        sessao.regeneracao_pergunta = None
+        self._finalizar(sessao, mensagem_original, resposta_final)
+        return resposta_final
+    
+    def _mostrar_imagens(self, sessao, mensagem_original, itens):
+        try:
+            resultado = imagem_web.montar(itens)
+            sessao.imagem_pendente = resultado["id"]
+
+            inicio = "Aqui está" if len(resultado["rotulos"]) == 1 else "Aqui estão"
+            texto = f"{inicio}: {', '.join(resultado['rotulos'])}."
+            if resultado["faltaram"]:
+                texto += " Não consegui achar: " + ", ".join(resultado["faltaram"]) + "."
+            if resultado["fontes"]:
+                texto += "\nFontes: " + ", ".join(resultado["fontes"])
+        except Exception as erro:
+            print(f"[ImagemWeb] {erro}")
+            texto = (
+                "Não consegui buscar essas imagens agora (limite do serviço de "
+                "busca ou nenhuma imagem utilizável). Se quiser, posso tentar "
+                "gerar uma ilustração, mas ela pode sair imprecisa."
+            )
 
         resposta_final = self.personality.aplicar(texto)
         sessao.regeneracao_pergunta = None
@@ -1152,10 +1258,31 @@ class Brain:
         # Mantém a mensagem original na memória de conversa.
         sessao.stm.add_message("user", mensagem_original)
         sessao.context.add_message(mensagem_original)
-        
-        decisao_busca = decidir_busca(
-        mensagem_para_ia, sessao.ultima_pergunta, self._chaves_memoria()
-        )
+
+        # Roteador: uma única chamada por mensagem. Código (```) não passa por ele.
+        decisao_busca = None
+        if "```" not in mensagem_para_ia:
+            decisao_busca = decidir_busca(
+                mensagem_para_ia[-1000:],   # em texto longo, o pedido costuma estar no fim
+                sessao.ultima_pergunta,
+                self._chaves_memoria(),
+                conversa=self._conversa_recente(sessao, n=2, max_chars=600),
+            )
+
+        if decisao_busca and decisao_busca.get("acao") == "imagem":
+            descricao = str(decisao_busca.get("descricao") or "").strip()
+            if descricao:
+                return self._gerar_imagem(sessao, mensagem_original, descricao)
+            
+        if decisao_busca and decisao_busca.get("acao") == "grafico":
+            spec = decisao_busca.get("grafico")
+            if isinstance(spec, dict):
+                return self._gerar_grafico(sessao, mensagem_original, spec)
+            
+        if decisao_busca and decisao_busca.get("acao") == "mostrar_imagem":
+            itens = decisao_busca.get("imagens")
+            if isinstance(itens, list) and itens:
+                return self._mostrar_imagens(sessao, mensagem_original, itens)
 
         # ------------------------------------------------------
         # CONTEÚDO EXTENSO (código, prompts, textos longos)
@@ -1419,9 +1546,6 @@ class Brain:
             elif PEDIDO_PESSOAL.search(original_message) or self._mensagem_cita_chave_da_memoria(original_message):
                 decisao_busca = {"busca": False}   # está na memória: não pesquisa
             else:
-                decisao_busca = decidir_busca(
-                    mensagem_para_ia, sessao.ultima_pergunta, self._chaves_memoria()
-                )
                 if decisao_busca is None:
                     # Roteador falhou: na dúvida, pesquisa em vez de responder de memória.
                     decisao_busca = {"busca": True, "consulta": None}

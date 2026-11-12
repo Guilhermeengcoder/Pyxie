@@ -22,9 +22,18 @@ MAX_RESULTADOS = 5
 MAX_CHARS_TRECHO = 700
 MAX_CHARS_CONSULTA = 400
 
+def _extrair_imagens(dados: dict) -> list:
+    """URLs https das imagens (a API manda strings ou objetos com 'url')."""
+    urls = []
+    for item in dados.get("images") or []:
+        url = item.get("url") if isinstance(item, dict) else item
+        if isinstance(url, str) and url.startswith("https://") and url not in urls:
+            urls.append(url)
+    return urls
+
 
 def buscar(consulta: str, profundidade: str = "basic",
-           max_resultados: int = MAX_RESULTADOS):
+    max_resultados: int = MAX_RESULTADOS, imagens: bool = False):
     """
     Devolve {"resultados": [{"titulo","url","trecho"}], "creditos": int}
     ou None se a consulta for vazia.
@@ -44,6 +53,9 @@ def buscar(consulta: str, profundidade: str = "basic",
         "include_answer": False,        # quem responde é o LLM
         "include_usage": True,          # devolve os créditos gastos
     }
+    
+    if imagens:
+        corpo["include_images"] = True
 
     try:
         r = requests.post(
@@ -87,8 +99,11 @@ def buscar(consulta: str, profundidade: str = "basic",
             "trecho": trecho[:MAX_CHARS_TRECHO],
         })
 
-    return {"resultados": resultados, "creditos": creditos}
-
+        return {
+        "resultados": resultados,
+        "creditos": creditos,
+        "imagens": _extrair_imagens(dados),
+    }
 
 def formatar_para_prompt(resultados: list) -> str:
     """Bloco de texto numerado para o LLM usar como fonte."""
