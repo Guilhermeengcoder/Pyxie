@@ -99,7 +99,7 @@ def buscar(consulta: str, profundidade: str = "basic",
             "trecho": trecho[:MAX_CHARS_TRECHO],
         })
 
-        return {
+    return {
         "resultados": resultados,
         "creditos": creditos,
         "imagens": _extrair_imagens(dados),

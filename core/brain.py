@@ -288,9 +288,9 @@ def preparar_prompt_imagem(descricao: str) -> str:
         "relationships only when needed to preserve the intended action.\n"
         "- For diagrams, preserve the requested structure and exact labels. "
         "Do not replace requested text with invented labels.\n"
-        "- Use natural English, prioritize essential details, remove "
         "- For named characters or people, describe their key visual traits "
-        "-(hair, clothing, colors, distinctive features) instead of relying on the name.\n"
+        "(hair, clothing, colors, distinctive features) instead of relying on the name.\n"
+        "- Use natural English, prioritize essential details, remove "
         "redundancy, and do not add quality buzzwords or parameters for "
         "other image-generation systems.\n"
         "- Return only the final prompt on one line, preferably under "
@@ -403,16 +403,14 @@ def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "",
         '- "grafico": o usuário pede um gráfico (barras, linha ou pizza) e deu '
         "os dados na própria mensagem. Preencha o campo grafico: rótulos curtos "
         "em português, valores só números (sem R$, sem separador de milhar). "
-        "Se ele informou uma renda ou total além dos gastos, inclua um item "
-        '"Não invente dados: se faltarem números, '
-        'use "nenhuma".\n'
+        "Se ele informou uma renda ou total além dos gastos, coloque esse número "
+        'no campo "renda" e NÃO crie item de sobra/restante. '
+        'Não invente dados: se faltarem números, use "nenhuma".\n'
         '- "busca": se a resposta depende de fatos que podem ter mudado ou dos '
         "quais você não tem certeza (pessoas, eventos, rankings, preços, leis, "
         "produtos, esportes, notícias), OU se o usuário contesta a resposta "
         "anterior (use a pergunta anterior na consulta). Nunca use busca para "
         "pedidos de imagem ou gráfico.\n"
-        '"grafico": {"tipo": "barras|linha|pizza", "titulo": "...", '
-        '"rotulos": ["..."], "valores": [0], "unidade": "R$", "renda": null}}\n'
         '- "nenhuma": conversa, opinião, criação de texto, código, matemática, '
         "conhecimento atemporal, problemas técnicos e dúvidas sobre "
         "os recursos da PYXIE.\n"
@@ -1016,6 +1014,7 @@ class Brain:
             self._finalizar(sessao, mensagem_original, resposta_final)
             return resposta_final
 
+        print(f"[Tavily] consulta={consulta!r}")
         try:
             busca = tavily_search.buscar(consulta)
         except ErroLLM as erro:
@@ -1024,8 +1023,6 @@ class Brain:
 
         if not busca or not busca["resultados"]:
             return None
-        
-        print(f"[Tavily] consulta={consulta!r}")
         for r in busca["resultados"]:
             print(f"   - {r['titulo']} | {r['url']}")
 
