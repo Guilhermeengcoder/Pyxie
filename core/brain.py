@@ -29,6 +29,7 @@ from core import memory_json
 from core import tavily_search
 from core.filtro_segredos import detectar_segredos
 from core import imagem_web
+from core import capacidades
 
 
 from core.llm_erros import (
@@ -898,11 +899,16 @@ class Brain:
         contexto_final = (
             contexto_historico + "\n\n" + contexto_extra[:100]
         ).strip()
+        
+                # Pedido vindo da voz: o texto será falado, então responde curto e sem formatação.
+        mensagem_envio = mensagem_para_ia
+        if sessao.restrito:
+            mensagem_envio = mensagem_para_ia + "\n\n" + capacidades.NOTA_VOZ
 
         erro_llm = None
         try:
             response = perguntar_llm(
-                mensagem_para_ia,
+                mensagem_envio,
                 contexto_final,
                 memoria_fixa=memoria_fixa_txt,
                 leve=extenso,
@@ -928,7 +934,7 @@ class Brain:
                 # A busca falhou: responde sem ela, avisando.
                 try:
                     response = perguntar_llm(
-                        mensagem_para_ia
+                        mensagem_envio
                         + "\n\n(A busca na web não funcionou agora. Responda com o "
                         "que você sabe e avise que não conseguiu confirmar online.)",
                         contexto_final,
@@ -1258,13 +1264,20 @@ class Brain:
 
         # Roteador: uma única chamada por mensagem. Código (```) não passa por ele.
         decisao_busca = None
-        if "```" not in mensagem_para_ia:
+        if capacidades.perguntou_sobre_capacidades(mensagem_para_ia):
+            decisao_busca = {"acao": "nenhuma", "busca": False}
+        elif "```" not in mensagem_para_ia:
             decisao_busca = decidir_busca(
                 mensagem_para_ia[-1000:],   # em texto longo, o pedido costuma estar no fim
                 sessao.ultima_pergunta,
                 self._chaves_memoria(),
                 conversa=self._conversa_recente(sessao, n=2, max_chars=600),
             )
+            
+        # Pergunta sobre as capacidades dela: responde pelo prompt, sem
+        # pesquisar na web nem gerar imagem.
+        if capacidades.perguntou_sobre_capacidades(mensagem_para_ia):
+            decisao_busca = {"acao": "nenhuma", "busca": False}
 
         if decisao_busca and decisao_busca.get("acao") == "imagem":
             descricao = str(decisao_busca.get("descricao") or "").strip()

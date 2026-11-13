@@ -4702,6 +4702,16 @@ function abrirWsVoz() {
                 );
                 break;
 
+            case "lembrete":
+                tocarBipeVoz();
+                definirStatusVoz("Lembrete: " + (msg.rotulo || ""));
+                mostrarAviso(
+                    "⏰ Lembrete: " + (msg.rotulo || ""),
+                    10000,
+                    "info"
+                );
+                break;
+
             case "ocultar":
                 limparResultadosVoz();
                 break;
@@ -4913,3 +4923,125 @@ document.addEventListener("keydown", (evento) => {
         encerrarVoz();
     }
 });
+
+// ========================================
+// LEMBRETES NO CHAT DE TEXTO
+// ========================================
+
+async function verificarLembretes() {
+    if (vozAtiva || document.hidden) return;   // a voz tem o próprio vigia
+
+    try {
+        const r = await apiFetch("/lembretes/vencidos");
+        if (!r.ok) return;
+
+        const dados = await r.json();
+
+        (dados.lembretes || []).forEach(l => {
+            mostrarAviso("⏰ Lembrete: " + l.texto, 15000, "info");
+        });
+    } catch (_) { }
+}
+
+setInterval(verificarLembretes, 30000);
+
+// ========================================
+// IMAGEM EM TELA CHEIA
+// ========================================
+
+function fecharImagemTelaCheia() {
+    const existente = document.getElementById("lightbox-pyxie");
+
+    if (existente) {
+        existente.remove();
+    }
+}
+
+function abrirImagemTelaCheia(src, alt) {
+    fecharImagemTelaCheia();
+
+    const fundo = document.createElement("div");
+    fundo.id = "lightbox-pyxie";
+    fundo.className = "lightbox";
+    fundo.setAttribute("role", "dialog");
+    fundo.setAttribute("aria-modal", "true");
+    fundo.setAttribute("aria-label", "Imagem em tela cheia");
+
+    const imagem = document.createElement("img");
+    imagem.className = "lightbox-imagem";
+    imagem.src = src;
+    imagem.alt = alt || "Imagem";
+
+    // Clicar na imagem não fecha; clicar no fundo fecha.
+    imagem.addEventListener("click", (e) => e.stopPropagation());
+
+    const barra = document.createElement("div");
+    barra.className = "lightbox-barra";
+    barra.addEventListener("click", (e) => e.stopPropagation());
+
+    const baixar = document.createElement("button");
+    baixar.type = "button";
+    baixar.className = "lightbox-btn";
+    baixar.textContent = "Baixar";
+
+    baixar.addEventListener("click", async () => {
+        try {
+            const blob = await (await fetch(src)).blob();
+            const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "pyxie-imagem." + ext;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+        } catch (erro) {
+            console.error("Erro ao baixar a imagem:", erro);
+            mostrarAviso("Não foi possível baixar a imagem.");
+        }
+    });
+
+    const fechar = document.createElement("button");
+    fechar.type = "button";
+    fechar.className = "lightbox-btn";
+    fechar.textContent = "×";
+    fechar.setAttribute("aria-label", "Fechar imagem");
+    fechar.addEventListener("click", fecharImagemTelaCheia);
+
+    barra.append(baixar, fechar);
+    fundo.append(imagem, barra);
+    fundo.addEventListener("click", fecharImagemTelaCheia);
+
+    document.body.appendChild(fundo);
+    fechar.focus();
+}
+
+// Um só ouvinte para todas as imagens (chat, painel de voz e anexos).
+document.addEventListener("click", (evento) => {
+    const alvo = evento.target;
+
+    if (!alvo || !alvo.closest) {
+        return;
+    }
+
+    const imagem = alvo.closest(".imagem-gerada, .user-message .anexo");
+
+    if (imagem && imagem.src) {
+        abrirImagemTelaCheia(imagem.src, imagem.alt);
+    }
+});
+
+// Escape fecha só a imagem. Na fase de captura, para não encerrar
+// também o modo conversa que pode estar aberto por baixo.
+document.addEventListener("keydown", (evento) => {
+    if (
+        evento.key === "Escape" &&
+        document.getElementById("lightbox-pyxie")
+    ) {
+        evento.stopPropagation();
+        fecharImagemTelaCheia();
+    }
+}, true);

@@ -22,6 +22,7 @@ from core.llm_erros import ErroLLM, mensagem_de_erro_llm
 from core.filtro_segredos import detectar_segredos
 from api import voz
 from core import resumo_arquivo
+from core import reminder
 
 
 # Sem /docs nem /openapi.json públicos: não mostram o mapa da API a estranhos.
@@ -468,6 +469,14 @@ def perguntar_no_projeto(projeto_id: int, pergunta: PerguntaProjeto):
         "uso": _uso_atual(),
         "aviso": llm.aviso_da_requisicao(),
     }
+    
+@app.get("/lembretes/vencidos", dependencies=[Depends(exigir_token)])
+def lembretes_vencidos():
+    try:
+        return {"lembretes": reminder.pegar_vencidos()}
+    except Exception as e:
+        print(f"[lembretes] {e}")
+        return {"lembretes": []}
     
 app.include_router(voz.router)
 

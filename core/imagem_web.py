@@ -46,7 +46,10 @@ def _host_publico(host: str) -> bool:
         infos = socket.getaddrinfo(host, None)
     except OSError:
         return False
-    return all(ipaddress.ip_address(i[4][0]).is_global for i in infos)
+    try:
+        return all(ipaddress.ip_address(i[4][0].split("%")[0]).is_global for i in infos)
+    except ValueError:
+        return False
 
 
 def _baixar(url: str):

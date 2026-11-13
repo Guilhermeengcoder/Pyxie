@@ -5,6 +5,12 @@ import os
 import re
 import secrets
 import unicodedata
+import time
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from core import reminder
 
 from fastapi import APIRouter, WebSocket
 from google import genai
@@ -14,6 +20,7 @@ from core import live, llm
 from core.brain import brain
 from core.filtro_segredos import detectar_segredos
 from core import usage_servicos
+from core import acoes
 
 router = APIRouter()
 
@@ -146,6 +153,48 @@ def _criar_timer(ws, estado: dict, timers: set, args: dict) -> str:
     return f"Timer '{rotulo}' definido para {_tempo_falado(segundos)}."
 
 
+VIGIA_INTERVALO_S = 15
+
+
+async def _vigia_lembretes(ws: WebSocket, estado: dict):
+    """Enquanto a conversa por voz estiver aberta, entrega lembretes vencidos."""
+    while True:
+        await asyncio.sleep(VIGIA_INTERVALO_S)
+
+        if estado.get("live") is None:   # reconectando: não reivindica agora
+            continue
+
+        try:
+            vencidos = await asyncio.to_thread(reminder.pegar_vencidos)
+        except Exception as e:
+            print(f"[voz] vigia de lembretes: {e!r}")
+            continue
+
+        for item in vencidos:
+            texto = _limpar_rotulo(item.get("texto"))
+            atraso = time.time() - float(item.get("quando", 0))
+            extra = (
+                f" (era para {_quando_falado(item['quando'])}, avise que está atrasado)"
+                if atraso > 120 else ""
+            )
+            try:
+                await ws.send_json({"tipo": "lembrete", "rotulo": texto})
+                await estado["live"].send_realtime_input(
+                    text=(
+                        f"[sistema] Hora do lembrete: '{texto}'{extra}. "
+                        "Avise o usuário agora, em uma frase curta."
+                    )
+                )
+            except Exception as e:
+                print(f"[voz] falha ao entregar lembrete, recolocando: {e!r}")
+                try:
+                    await asyncio.to_thread(
+                        reminder.adicionar, item.get("texto", ""), time.time() + 20
+                    )
+                except Exception:
+                    pass
+
+
 async def _do_navegador(ws: WebSocket, sessao_live):
     """Navegador -> Live: áudio (binário) e comandos (JSON)."""
     while True:
@@ -172,48 +221,162 @@ async def _do_navegador(ws: WebSocket, sessao_live):
             await sessao_live.send_realtime_input(text=str(cmd["texto"])[:2000])
 
 
+async def _t_hora(args, ctx):
+    return live.hora_atual_texto(), False, None
+
+
+async def _t_timer(args, ctx):
+    return _criar_timer(ctx["ws"], ctx["estado"], ctx["timers"], args), False, None
+
+
+async def _t_ocultar(args, ctx):
+    return "Pronto, escondi.", False, {"tipo": "ocultar"}
+
+
+async def _t_perguntar(args, ctx):
+    pedido = str(args.get("texto", "")).strip()
+    if not pedido:
+        return "Não entendi o pedido.", False, None
+
+    chat_id = ctx["chat_id"]
+    sessao = brain.sessions.get(chat_id)
+    sessao.imagem_pendente = None
+
+    try:
+        resultado = await asyncio.to_thread(_chamar_brain, pedido, chat_id)
+    except Exception as e:
+        print(f"[voz] erro no brain: {e}")
+        return "Não consegui processar isso agora.", True, None
+
+    imagem_id = sessao.imagem_pendente
+    sessao.imagem_pendente = None
+
+    mostrar = bool(args.get("mostrar_no_chat")) or bool(imagem_id)
+    extra = (
+        {"tipo": "resultado", "pedido": pedido, "texto": resultado, "imagem_id": imagem_id}
+        if mostrar and resultado
+        else None
+    )
+    return resultado, True, extra
+
+
+def _fuso():
+    try:
+        return ZoneInfo("America/Sao_Paulo")
+    except Exception:
+        return None
+
+
+def _quando_falado(ts: float) -> str:
+    return datetime.fromtimestamp(ts, _fuso()).strftime("%d/%m às %H:%M")
+
+
+async def _t_criar_lembrete(args, ctx):
+    texto = str(args.get("texto") or "").strip()
+    if not texto:
+        return "Não entendi do que lembrar.", False, None
+
+    agora = time.time()
+    try:
+        if args.get("em_segundos") not in (None, ""):
+            quando = agora + float(args["em_segundos"])
+        elif args.get("data_hora"):
+            dt = datetime.strptime(str(args["data_hora"]).strip(), "%Y-%m-%d %H:%M")
+            quando = dt.replace(tzinfo=_fuso()).timestamp()
+        else:
+            return "Preciso saber quando avisar.", False, None
+    except (TypeError, ValueError):
+        return "Não entendi o horário do lembrete.", False, None
+
+    if quando < agora + 10 or quando > agora + 365 * 86400:
+        return "Só marco lembretes entre alguns segundos e um ano à frente.", False, None
+
+    try:
+        await asyncio.to_thread(reminder.adicionar, texto, quando)
+    except ValueError as e:
+        return f"Não consegui marcar: {e}.", False, None
+    except Exception as e:
+        print(f"[voz] erro ao salvar lembrete: {e!r}")
+        return "Não consegui salvar o lembrete agora.", False, None
+
+    return f"Lembrete '{_limpar_rotulo(texto)}' marcado para {_quando_falado(quando)}.", False, None
+
+
+async def _t_listar_lembretes(args, ctx):
+    try:
+        itens = await asyncio.to_thread(reminder.listar)
+    except Exception as e:
+        print(f"[voz] erro ao listar lembretes: {e!r}")
+        return "Não consegui ver os lembretes agora.", False, None
+    if not itens:
+        return "Não há lembretes pendentes.", False, None
+    return "; ".join(
+        f"{_limpar_rotulo(i['texto'])} em {_quando_falado(i['quando'])}" for i in itens[:10]
+    ), False, None
+
+
+async def _t_cancelar_lembrete(args, ctx):
+    try:
+        feitos = await asyncio.to_thread(reminder.cancelar, str(args.get("texto", "")))
+    except Exception as e:
+        print(f"[voz] erro ao cancelar lembrete: {e!r}")
+        return "Não consegui cancelar agora.", False, None
+    if not feitos:
+        return "Não achei esse lembrete.", False, None
+    return "Cancelei: " + "; ".join(_limpar_rotulo(t) for t in feitos) + ".", False, None
+
+
+# Para uma ferramenta nova: escreva a função acima, registre aqui
+# e declare-a em core/live.py (ferramentas_pyxie).
+
+async def _t_abrir_programa(args, ctx):
+    programa = acoes.resolver(args.get("nome"))
+    if not programa:
+        return f"Só consigo abrir: {acoes.lista_falada()}.", False, None
+
+    nome = acoes.PROGRAMAS[programa]
+
+    try:
+        if not await asyncio.to_thread(acoes.agente_ativo):
+            return "O agente do computador não está ligado, então não consigo abrir agora.", False, None
+
+        acao_id = await asyncio.to_thread(acoes.enfileirar, programa)
+        resultado = await asyncio.to_thread(acoes.esperar_resultado, acao_id)
+    except ValueError as e:
+        return f"Não consegui pedir: {e}.", False, None
+    except Exception as e:
+        print(f"[voz] erro ao abrir programa: {e!r}")
+        return "Não consegui falar com o computador agora.", False, None
+
+    print(f"[voz] abrir {programa}: {resultado!r}")
+
+    if resultado == "ok":
+        return f"Abri o {nome}.", False, None
+    if resultado is None:
+        return f"Mandei abrir o {nome}, mas o computador ainda não confirmou.", False, None
+    return f"Não consegui abrir o {nome}.", False, None
+
+FERRAMENTAS = {
+    "perguntar_pyxie": _t_perguntar,
+    "hora_atual": _t_hora,
+    "definir_timer": _t_timer,
+    "ocultar_resultados": _t_ocultar,
+    "criar_lembrete": _t_criar_lembrete,
+    "listar_lembretes": _t_listar_lembretes,
+    "cancelar_lembrete": _t_cancelar_lembrete,
+    "abrir_programa": _t_abrir_programa,
+}
+
+
 async def _executar_ferramenta(fc, ws, estado: dict, chat_id: str, timers: set):
     """Roda UMA chamada de ferramenta. Devolve (texto, passou_pelo_brain, extra)."""
-    args = fc.args or {}
+    handler = FERRAMENTAS.get(fc.name)
+    if handler is None:
+        print(f"[voz] ferramenta desconhecida: {fc.name!r}")
+        return "Essa ferramenta não existe.", False, None
 
-    if fc.name == "hora_atual":
-        return live.hora_atual_texto(), False, None
-
-    if fc.name == "definir_timer":
-        return _criar_timer(ws, estado, timers, args), False, None
-    
-    if fc.name == "ocultar_resultados":
-        return "Pronto, escondi.", False, {"tipo": "ocultar"}
-
-    if fc.name == "perguntar_pyxie":
-        pedido = str(args.get("texto", "")).strip()
-        if not pedido:
-            return "Não entendi o pedido.", False, None
-
-        sessao = brain.sessions.get(chat_id)
-        sessao.imagem_pendente = None   # o brain preenche se gerar imagem/gráfico
-
-        try:
-            resultado = await asyncio.to_thread(_chamar_brain, pedido, chat_id)
-        except Exception as e:
-            print(f"[voz] erro no brain: {e}")
-            return "Não consegui processar isso agora.", True, None
-
-        imagem_id = sessao.imagem_pendente
-        sessao.imagem_pendente = None
-
-        mostrar = bool(args.get("mostrar_no_chat")) or bool(imagem_id)
-        extra = (
-            {
-                "tipo": "resultado",
-                "pedido": pedido,
-                "texto": resultado,
-                "imagem_id": imagem_id,
-            }
-            if mostrar and resultado
-            else None
-        )
-        return resultado, True, extra
+    ctx = {"ws": ws, "estado": estado, "chat_id": chat_id, "timers": timers}
+    return await handler(fc.args or {}, ctx)
 
     print(f"[voz] ferramenta desconhecida: {fc.name!r}")
     return "Essa ferramenta não existe.", False, None
@@ -335,9 +498,11 @@ async def voz(ws: WebSocket):
     timers: set = set()
     estado = {"live": None}
     saudar = False
+    vigia = None
 
     _ativas += 1
     try:
+        vigia = asyncio.create_task(_vigia_lembretes(ws, estado))
         client = genai.Client(api_key=chave)
 
         while True:
@@ -393,6 +558,10 @@ async def voz(ws: WebSocket):
         print(f"[voz] erro: {e!r}")
     finally:
         _ativas -= 1
+        
+        if vigia:
+            vigia.cancel()
+            await asyncio.gather(vigia, return_exceptions=True)
 
         # Timers não sobrevivem à conversa.
         for t in timers:
@@ -406,3 +575,7 @@ async def voz(ws: WebSocket):
             await ws.close()
         except Exception:
             pass
+        
+_declaradas = {d.name for d in live.ferramentas_pyxie().function_declarations}
+if _declaradas != set(FERRAMENTAS):
+    print(f"[voz] AVISO: ferramentas e declarações divergem: {_declaradas ^ set(FERRAMENTAS)}")

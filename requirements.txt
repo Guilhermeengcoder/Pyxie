@@ -26,7 +26,7 @@ screen-brightness-control
 # Banco de dados (Neon / Postgres)
 psycopg[binary]
 
-matplotlib
+matplotlib==3.11.2
 pillow==12.1.1
 
 websockets==16.0

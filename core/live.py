@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from core import capacidades
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -36,9 +37,12 @@ INSTRUCAO_FERRAMENTA = """
 Ferramentas:
 - Para saber a hora ou a data de hoje, chame hora_atual.
 - Quando o usuário pedir para ser avisado depois de um tempo, chame definir_timer.
+- Para lembretes que devem sobreviver ao fim da conversa (com horário ou para depois), chame criar_lembrete; definir_timer é só para contagens curtas durante a conversa. Para ver ou cancelar, chame listar_lembretes ou cancelar_lembrete.
 - Para qualquer outro fato, notícia, número, pessoa, preço, pesquisa ou comando,
   chame perguntar_pyxie e fale o resultado dela sem acrescentar nada de memória.
 - Responda sozinha só a conversa casual, opiniões e piadas.
+- Perguntas sobre o que você sabe fazer, suas capacidades ou como você funciona: responda sozinha usando a seção "Suas capacidades", sem chamar perguntar_pyxie.
+- Para abrir um programa no computador do usuário, chame abrir_programa e fale só o resultado. Nunca use perguntar_pyxie para isso.
 - Imagens e gráficos, sempre via perguntar_pyxie, com as palavras do usuário:
   - Para ver coisas que existem de verdade (bandeiras, países, animais, lugares, monumentos, objetos), peça "mostre imagens de ...". O sistema busca fotos reais na internet.
   - Só peça "gere uma imagem de ..." para criar algo inventado ou artístico (personagem, cena, logo novo).
@@ -102,6 +106,7 @@ def montar_config(historico: str = "", com_ferramenta: bool = False, dono: bool 
 
     if com_ferramenta:
         instrucao += "\n" + INSTRUCAO_FERRAMENTA
+        instrucao += "\n\n" + capacidades.texto_voz()
 
     if historico.strip():
         instrucao += "\n\nConversa até agora:\n" + historico.strip()
@@ -198,8 +203,74 @@ def ferramentas_pyxie(dono: bool = True):
             ),
             behavior=types.Behavior.BLOCKING,
         ),
+        
+                types.FunctionDeclaration(
+            name="criar_lembrete",
+            description=(
+                "Cria um lembrete que persiste mesmo depois que a conversa fecha. "
+                "Use para 'me lembra de X às 15h' ou 'amanhã de manhã'. "
+                "Para tempo relativo (daqui a 2 horas) use em_segundos. "
+                "Para horário marcado, chame hora_atual antes e envie data_hora."
+            ),
+            parameters=types.Schema(
+                type="OBJECT",
+                properties={
+                    "texto": types.Schema(
+                        type="STRING",
+                        description="Do que lembrar, ex.: 'ligar para o dentista'.",
+                    ),
+                    "em_segundos": types.Schema(
+                        type="INTEGER",
+                        description="Daqui a quantos segundos avisar.",
+                    ),
+                    "data_hora": types.Schema(
+                        type="STRING",
+                        description="Momento exato, horário de Brasília, no formato AAAA-MM-DD HH:MM.",
+                    ),
+                },
+                required=["texto"],
+            ),
+            behavior=types.Behavior.BLOCKING,
+        ),
+        types.FunctionDeclaration(
+            name="listar_lembretes",
+            description="Lista os lembretes pendentes.",
+            behavior=types.Behavior.BLOCKING,
+        ),
+        types.FunctionDeclaration(
+            name="cancelar_lembrete",
+            description="Cancela um lembrete pelo trecho do texto dele.",
+            parameters=types.Schema(
+                type="OBJECT",
+                properties={
+                    "texto": types.Schema(
+                        type="STRING",
+                        description="Trecho do lembrete a cancelar.",
+                    ),
+                },
+                required=["texto"],
+            ),
+            behavior=types.Behavior.BLOCKING,
+        ),
+                types.FunctionDeclaration(
+            name="abrir_programa",
+            description=(
+                "Abre um programa no computador do usuário. Só funciona para: "
+                "Chrome, Spotify, VS Code, Edge, Bloco de Notas e Calculadora."
+            ),
+            parameters=types.Schema(
+                type="OBJECT",
+                properties={
+                    "nome": types.Schema(
+                        type="STRING",
+                        description="Nome do programa, ex.: 'spotify'.",
+                    ),
+                },
+                required=["nome"],
+            ),
+            behavior=types.Behavior.BLOCKING,
+        ),
     ])
-
 
 # Compatibilidade com o nome antigo.
 ferramenta_pyxie = ferramentas_pyxie
