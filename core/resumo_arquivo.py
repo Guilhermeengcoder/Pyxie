@@ -35,7 +35,9 @@ def resumir(nome: str, conteudo: str) -> str:
         f"{conteudo[:MAX_ENTRADA_CHARS]}"
     )
 
-    texto = perguntar_gemini(pedido, "(tarefa técnica, sem cumprimentos)")
+    texto = perguntar_gemini(
+        pedido, "(tarefa técnica, sem cumprimentos)", tarefa="longo"
+    )
     texto = re.sub(r"\[\[.*?\]\]", "", texto, flags=re.DOTALL).strip()
 
     return (

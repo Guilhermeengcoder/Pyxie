@@ -272,7 +272,9 @@ class ShortTermMemory:
         context.extend(m.to_dict() for m in self._messages)
         return context
 
-    def get_context_seletivo(self, max_chars=None, excluir_ultima: bool = True) -> list[dict]:
+    def get_context_seletivo(
+        self, max_chars=None, excluir_ultima: bool = True, limite_total=None
+    ) -> list[dict]:
         """
         Retorna o histórico recente da conversa, respeitando um teto de
         caracteres. O teto depende da mensagem atual: se ela parece
@@ -284,9 +286,9 @@ class ShortTermMemory:
         que já é enviada separadamente ao LLM.
         """
         msgs = self._messages[:-1] if excluir_ultima else self._messages
-        limite = LIMITE_CONTEXTO_CHARS
+        limite = limite_total if limite_total is not None else LIMITE_CONTEXTO_CHARS
 
-        if excluir_ultima and self._messages:
+        if limite_total is None and excluir_ultima and self._messages:
             atual = self._messages[-1]
             if (
                 atual.role == "user"

@@ -217,35 +217,84 @@ def perguntar_llm_seguro(pergunta, contexto):
         return None
     
 def comentar_grafico(spec: dict, contexto: str):
-    """Comentário curto sobre os dados do gráfico. None se o modelo falhar."""
-    rotulos = [str(r) for r in spec["rotulos"]]
-    valores = [float(v) for v in spec["valores"]]
+    """Comentário analítico sobre os dados do gráfico. None se o modelo falhar."""
     un = str(spec.get("unidade", "")).strip()
-    tipo = str(spec.get("tipo", "barras")).lower()
+    tipo = str(spec.get("tipo", "barras")).strip().lower()
+    e_linha = tipo in ("linha", "line", "linhas")
 
-    total = sum(valores)
-    i_max = valores.index(max(valores))
-    i_min = valores.index(min(valores))
+    def fmt(v):
+        return grafico.formatar_valor(v, un)
 
-    fatos = [
-        f"Título: {spec.get('titulo', '')}",
-        "Dados: " + "; ".join(f"{r} = {v:g} {un}".strip() for r, v in zip(rotulos, valores)),
-        f"Total: {total:g} {un}".strip(),
-        f"Maior: {rotulos[i_max]} ({valores[i_max]:g} {un}".strip() + ")",
-        f"Menor: {rotulos[i_min]} ({valores[i_min]:g} {un}".strip() + ")",
-    ]
-    if total > 0:
-        fatos.append(f"O maior valor representa {valores[i_max] / total * 100:.0f}% do total")
-    if tipo == "linha" and len(valores) > 1 and valores[0] != 0:
-        var = (valores[-1] - valores[0]) / abs(valores[0]) * 100
-        fatos.append(f"Variação do primeiro ao último ponto: {var:+.0f}%")
+    pares = [(str(r), float(v)) for r, v in zip(spec["rotulos"], spec["valores"])]
+    n = len(pares)
+    total = sum(v for _, v in pares)
+    pct_ok = total > 0 and all(v >= 0 for _, v in pares)
+
+    def pct(v):
+        return f" ({v / total * 100:.0f}%)" if pct_ok else ""
+
+    fatos = [f"Título: {spec.get('titulo', '')}"]
+
+    if e_linha:
+        fatos.append(
+            "Pontos, em ordem: " + "; ".join(f"{r} = {fmt(v)}" for r, v in pares)
+        )
+        primeiro, ultimo = pares[0][1], pares[-1][1]
+        if n > 1 and primeiro != 0:
+            fatos.append(
+                f"Variação do primeiro ao último ponto: "
+                f"{(ultimo - primeiro) / abs(primeiro) * 100:+.0f}%"
+            )
+        pico = max(pares, key=lambda p: p[1])
+        vale = min(pares, key=lambda p: p[1])
+        fatos.append(f"Pico: {pico[0]} ({fmt(pico[1])}); vale: {vale[0]} ({fmt(vale[1])})")
+        if n > 2 and pares[-2][1] != 0:
+            fatos.append(
+                f"Do penúltimo ao último ponto: "
+                f"{(ultimo - pares[-2][1]) / abs(pares[-2][1]) * 100:+.0f}%"
+            )
+    else:
+        ordem = sorted(pares, key=lambda p: p[1], reverse=True)
+        fatos.append(
+            "Valores, do maior para o menor: "
+            + "; ".join(f"{r} = {fmt(v)}{pct(v)}" for r, v in ordem)
+        )
+        fatos.append(f"Total: {fmt(total)}")
+        fatos.append(f"Média por item: {fmt(total / n)}")
+
+        if n > 1:
+            (r1, v1), (r2, v2) = ordem[0], ordem[1]
+            fatos.append(f"Diferença entre o 1º ({r1}) e o 2º ({r2}): {fmt(v1 - v2)}")
+            rmin, vmin = ordem[-1]
+            if vmin > 0:
+                fatos.append(
+                    f"{r1} é {v1 / vmin:.1f} vezes {rmin}".replace(".", ",")
+                )
+        if n >= 3 and pct_ok:
+            fatos.append(
+                f"Os dois maiores somam {(v1 + v2) / total * 100:.0f}% do total"
+            )
+
+        sobra = next((p for p in pares if p[0].strip().lower() == "sobra"), None)
+        if sobra and total > 0:
+            gastos = total - sobra[1]
+            fatos.append(
+                f"'Sobra' não é um gasto: é o que restou da renda informada. "
+                f"Renda: {fmt(total)}; gastos somados: {fmt(gastos)} "
+                f"({gastos / total * 100:.0f}% da renda); "
+                f"sobra: {fmt(sobra[1])} ({sobra[1] / total * 100:.0f}% da renda)"
+            )
 
     instrucao = (
-        "Acabei de mostrar à pessoa um gráfico feito com os dados dela. "
-        "Comente em 2 a 4 frases curtas, de forma natural e útil, o que os "
-        "números mostram (destaques, proporções, algo que chame atenção). "
-        "Use SOMENTE os fatos abaixo, sem inventar números nem fazer outras contas. "
-        "Não repita a lista de dados, não cumprimente e não escreva marcações [[...]].\n\n"
+        "Acabei de mostrar à pessoa um gráfico feito com os dados dela. Escreva um "
+        "comentário analítico e útil, em português, neste formato: "
+        "(1) uma frase de abertura com a conclusão principal; "
+        "(2) de 2 a 4 tópicos curtos, cada um começando com '- ', destacando em "
+        "**negrito** os números-chave (proporções, diferenças, comparações); "
+        "(3) uma frase final com uma observação prática ou sugestão que decorra dos dados. "
+        "Use SOMENTE os fatos abaixo, copiando os números exatamente como estão, sem "
+        "inventar valores nem fazer outras contas. Não repita a lista inteira de dados, "
+        "não cumprimente, não use emojis e não escreva marcações [[...]].\n\n"
         + "\n".join(fatos)
     )
 
@@ -254,6 +303,7 @@ def comentar_grafico(spec: dict, contexto: str):
             instrucao,
             contexto or "(conversa em andamento, sem cumprimentos)",
             leve=True,
+            tarefa="interna",
         )
     except ErroLLM as erro:
         print(f"[Gráfico/comentário] {erro}")
@@ -304,6 +354,7 @@ def preparar_prompt_imagem(descricao: str) -> str:
             instrucao,
             "(tarefa técnica, sem cumprimentos)",
             leve=True,
+            tarefa="interna",
         )
     except ErroLLM as erro:
         print(f"[Imagem] Falha na otimização por LLM: {erro}")
@@ -358,6 +409,33 @@ def usar_tavily() -> bool:
         return modo == "gemini" or (modo == "auto" and llm_config.em_pausa("groq"))
 
     return True
+
+def _ler_json_tolerante(texto):
+    """Extrai o objeto do roteador mesmo com aspas simples ou chaves sem aspas."""
+    achado = re.search(r"\{.*\}", texto or "", re.DOTALL)
+    if not achado:
+        return None
+    bruto = achado.group(0)
+
+    try:
+        return json.loads(bruto)
+    except ValueError:
+        pass
+
+    # Estilo Python: aspas simples, None/True/False
+    try:
+        dados = ast.literal_eval(bruto)
+        if isinstance(dados, dict):
+            return dados
+    except (ValueError, SyntaxError):
+        pass
+
+    # Chaves sem aspas: {acao: "busca"}
+    try:
+        corrigido = re.sub(r'([{,]\s*)([A-Za-z_]\w*)\s*:', r'\1"\2":', bruto)
+        return json.loads(corrigido)
+    except ValueError:
+        return None
 
 def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "", conversa: str = ""):
     """Roteador: decide entre imagem, busca ou nenhuma das duas.
@@ -427,9 +505,11 @@ def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "",
             "(tarefa técnica, sem cumprimentos)",
             leve=True,
             sensivel=bool(chaves_memoria),
+            tarefa="roteador",
         )
-        achado = re.search(r"\{.*\}", texto or "", re.DOTALL)
-        dados = json.loads(achado.group(0)) if achado else None
+        dados = _ler_json_tolerante(texto)
+        if dados is None:
+            print(f"[roteador] resposta ilegível: {str(texto)[:200]!r}")
 
         if isinstance(dados, dict) and "acao" in dados:
             dados["acao"] = str(dados["acao"]).strip().lower()
@@ -472,6 +552,11 @@ LIMITE_MEMORIA_FIXA = 7000
 # Histórico máximo (em caracteres) quando a mensagem é código/texto
 # extenso: o Groq gratuito aceita poucos tokens por pedido.
 LIMITE_HISTORICO_EXTENSO = 3000
+
+# A partir daqui, o pedido é "longo": vai ao Gemini (Groq free não aguenta).
+LIMITE_LONGO_CHARS = int(os.getenv("LIMITE_LONGO_CHARS", "6000"))
+# Histórico enviado ao Gemini quando há conteúdo grande na conversa.
+LIMITE_HISTORICO_LONGO = 150_000
 
 
 def memoria_fixa_relevante(
@@ -542,6 +627,19 @@ def eh_pedido_de_imagem(texto: str) -> bool:
     if NAO_E_PEDIDO_IMAGEM.search(trecho):
         return False
     return bool(PEDIDO_IMAGEM.search(trecho))
+
+def tarefa_do_pedido(sessao, texto: str) -> str:
+    """conversa | longo | continuacao.
+
+    longo: a mensagem em si é grande. continuacao: há conteúdo grande nas
+    últimas mensagens (o pedido provavelmente se refere a ele).
+    """
+    if len(texto or "") >= LIMITE_LONGO_CHARS:
+        return "longo"
+    anteriores = sessao.stm._messages[:-1][-4:]   # sem a mensagem atual
+    if any(len(m.content) >= LIMITE_LONGO_CHARS for m in anteriores):
+        return "continuacao"
+    return "conversa"
 
 # =============================================================
 # BRAIN — CLASSE ÚNICA
@@ -855,8 +953,12 @@ class Brain:
         original_message: str,
         extenso: bool = False,
         ferramentas: bool = False,
+        tarefa: str = "conversa",
     ):
-        contexto_stm = sessao.stm.get_context_seletivo()
+        grande = tarefa in ("longo", "continuacao")
+        contexto_stm = sessao.stm.get_context_seletivo(
+            limite_total=LIMITE_HISTORICO_LONGO if grande else None
+        )
         contexto_extra = sessao.context.get_entity() or ""
 
         linhas_historico = []
@@ -870,7 +972,7 @@ class Brain:
 
         # Conteúdo extenso: histórico curto, só as mensagens mais recentes
         # (cada mensagem entra inteira ou não entra).
-        if extenso:
+        if extenso and not grande:
             escolhidas, total = [], 0
             for linha in reversed(linhas_historico):
                 total += len(linha)
@@ -912,6 +1014,7 @@ class Brain:
                 contexto_final,
                 memoria_fixa=memoria_fixa_txt,
                 leve=extenso,
+                tarefa=tarefa,
             )
         except Exception as erro:
             print(f"[ERRO LLM no fallback]: {erro}")
@@ -956,6 +1059,7 @@ class Brain:
             sessao.regeneracao_contexto = contexto_final
             sessao.regeneracao_memoria_fixa = memoria_fixa_txt
             sessao.regeneracao_leve = extenso
+            sessao.regeneracao_tarefa = tarefa
             self._finalizar(sessao, mensagem_original, resposta_final)
             return resposta_final
 
@@ -1261,10 +1365,14 @@ class Brain:
         # Mantém a mensagem original na memória de conversa.
         sessao.stm.add_message("user", mensagem_original)
         sessao.context.add_message(mensagem_original)
+        tarefa = tarefa_do_pedido(sessao, mensagem_para_ia)
 
         # Roteador: uma única chamada por mensagem. Código (```) não passa por ele.
         decisao_busca = None
         if capacidades.perguntou_sobre_capacidades(mensagem_para_ia):
+            decisao_busca = {"acao": "nenhuma", "busca": False}
+        elif tarefa != "conversa":
+            # Conteúdo grande ou continuação dele: o roteador só atrapalharia.
             decisao_busca = {"acao": "nenhuma", "busca": False}
         elif "```" not in mensagem_para_ia:
             decisao_busca = decidir_busca(
@@ -1306,6 +1414,7 @@ class Brain:
                 mensagem_para_ia,
                 original_message,
                 extenso=True,
+                tarefa=tarefa,
             )
 
         # ------------------------------------------------------
@@ -1557,8 +1666,9 @@ class Brain:
                 decisao_busca = {"busca": False}   # está na memória: não pesquisa
             else:
                 if decisao_busca is None:
-                    # Roteador falhou: na dúvida, pesquisa em vez de responder de memória.
-                    decisao_busca = {"busca": True, "consulta": None}
+                    # Roteador falhou: só pesquisa se a regra local também achou
+                    # uma pergunta factual (evita gastar Tavily com "me manda o código").
+                    decisao_busca = {"busca": categoria == "internet", "consulta": None}
 
             if decisao_busca and decisao_busca.get("busca"):
                 resposta_web = self._responder_com_busca(
@@ -1596,6 +1706,7 @@ class Brain:
             original_message,
             extenso=False,
             ferramentas=True,
+            tarefa=tarefa,
         )
 
     # ----------------------------------------------------------
@@ -1666,6 +1777,7 @@ class Brain:
                         sessao, "regeneracao_memoria_fixa", ""
                     ),
                     leve=getattr(sessao, "regeneracao_leve", False),
+                    tarefa=getattr(sessao, "regeneracao_tarefa", "conversa"),
                 )
 
             except Exception as erro:

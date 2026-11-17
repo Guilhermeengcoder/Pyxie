@@ -1,5 +1,6 @@
 import importlib
 import threading
+import os
 
 from core import llm_config
 from core.filtro_segredos import detectar_segredos
@@ -19,6 +20,10 @@ PROVEDORES_CONFIAVEIS = {"groq"}
 
 # Ordem de tentativa no modo Auto.
 ORDEM_AUTO = ["groq", "gemini"]
+
+# Conteúdo grande (tarefa "longo"/"continuacao") tenta o Gemini primeiro,
+# em qualquer modo. Desligue com GEMINI_PARA_LONGO=0.
+GEMINI_PARA_LONGO = os.getenv("GEMINI_PARA_LONGO", "1").strip() == "1"
 
 AVISO_RESERVA = (
     "Respondi pelo modo reserva (Gemini): "
@@ -79,12 +84,14 @@ _PROVEDORES = {
         "modulo_imagem": "modules.groq_vision",
         "imagem": "perguntar_groq_imagem",
         "sem_busca": True,
+        "tarefas": True,
     },
     "gemini": {
         "modulo": "modules.gemini_ai",
         "texto": "perguntar_gemini",
         "modulo_imagem": "modules.gemini_ai",
         "imagem": "perguntar_gemini_imagem",
+        "tarefas": True,
     },
     "ollama": {
         "modulo": "modules.ollama_ai",
@@ -147,7 +154,8 @@ def _carregar(nome: str, modulo_chave: str, funcao_chave: str):
 
 
 def perguntar_llm_detalhado(
-    pergunta, contexto, memoria_fixa="", sensivel=False, leve=False
+    pergunta, contexto, memoria_fixa="", sensivel=False, leve=False,
+    tarefa="conversa",
 ):
     """
     Devolve (texto, provedor_usado).
@@ -165,6 +173,10 @@ def perguntar_llm_detalhado(
     modo = llm_config.obter_modo()
     ordem = _ordem(modo)
 
+    longo = tarefa in ("longo", "continuacao")
+    if longo and GEMINI_PARA_LONGO and modo != "gemini":
+        ordem = ["gemini"] + [p for p in ordem if p != "gemini"]
+
     if sensivel:
         ordem = [p for p in ordem if p in PROVEDORES_CONFIAVEIS]
         if not ordem:
@@ -172,7 +184,7 @@ def perguntar_llm_detalhado(
                 modo, "provedor não confiável para conteúdo sensível"
             )
 
-    if modo == "auto":
+    if modo == "auto" or (longo and modo != "gemini"):
         livres = [p for p in ordem if not llm_config.em_pausa(p)]
         tentativas = livres or ordem
     else:
@@ -189,13 +201,21 @@ def perguntar_llm_detalhado(
         if nome not in PROVEDORES_CONFIAVEIS:
             achados = detectar_segredos(f"{pergunta}\n{contexto}")
             if achados:
-                raise ErroSegredo(
+                erro_seg = ErroSegredo(
                     nome, "possível segredo: " + ", ".join(achados)
                 )
+                # Em conteúdo grande, com outro provedor disponível, só pula o Gemini.
+                if longo and len(tentativas) > 1:
+                    primeiro_erro = primeiro_erro or erro_seg
+                    continue
+                raise erro_seg
 
         extras = {}
         if leve and _PROVEDORES.get(nome, {}).get("sem_busca"):
             extras["busca"] = False
+            
+        if tarefa != "conversa" and _PROVEDORES.get(nome, {}).get("tarefas"):
+            extras["tarefa"] = tarefa
 
         try:
             funcao = _carregar(nome, "modulo", "texto")
@@ -221,7 +241,8 @@ def perguntar_llm_detalhado(
 
 
 def perguntar_llm(
-    pergunta, contexto, memoria_fixa="", sensivel=False, leve=False
+    pergunta, contexto, memoria_fixa="", sensivel=False, leve=False,
+    tarefa="conversa",
 ):
     texto, _ = perguntar_llm_detalhado(
         pergunta,
@@ -229,6 +250,7 @@ def perguntar_llm(
         memoria_fixa=memoria_fixa,
         sensivel=sensivel,
         leve=leve,
+        tarefa=tarefa,
     )
     return texto
 

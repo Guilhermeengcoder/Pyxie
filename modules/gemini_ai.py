@@ -19,6 +19,12 @@ load_dotenv()
 # Se o .env tiver GEMINI_MODEL, ele manda no valor padrão.
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
+# Modelo de volume: reserva do Auto, tarefas internas e imagens (500 pedidos/dia).
+# GEMINI_MODEL fica reservado ao trabalho "longo" (arquivos e código grandes).
+GEMINI_MODEL_VOLUME = (
+    os.getenv("GEMINI_MODEL_VOLUME", "gemini-3.5-flash-lite").strip() or GEMINI_MODEL
+)
+
 # A busca do Gemini (google_search) deu 429 no plano gratuito.
 # Fica DESLIGADA; só ligue com GEMINI_BUSCA=1 se passar para um plano que a inclua.
 GEMINI_BUSCA = os.getenv("GEMINI_BUSCA", "0").strip() == "1"
@@ -66,15 +72,22 @@ def _traduzir_erro(e: Exception) -> ErroLLM:
 # GEMINI
 # ================================================================
 
-def perguntar_gemini(comando: str, memoria: str = "") -> str:
-    """
-    Envia uma pergunta ao Gemini e retorna o texto da resposta.
-    Em caso de falha levanta ErroCota, ErroIndisponivel ou ErroLLM.
-    """
+# Pedidos que continuam um arquivo grande já enviado: modelo de volume por padrão.
+GEMINI_MODEL_CONTINUACAO = (
+    os.getenv("GEMINI_MODEL_CONTINUACAO", "").strip() or GEMINI_MODEL_VOLUME
+)
 
-    prompt = montar_prompt(comando, memoria)
 
-    argumentos = {"model": GEMINI_MODEL, "input": prompt}
+def _modelo_da_tarefa(tarefa: str) -> str:
+    if tarefa == "longo":
+        return GEMINI_MODEL
+    if tarefa == "continuacao":
+        return GEMINI_MODEL_CONTINUACAO
+    return GEMINI_MODEL_VOLUME
+
+
+def _gerar_texto(prompt: str, modelo: str) -> str:
+    argumentos = {"model": modelo, "input": prompt}
 
     if GEMINI_BUSCA:
         argumentos["tools"] = [{"type": "google_search"}]
@@ -82,9 +95,9 @@ def perguntar_gemini(comando: str, memoria: str = "") -> str:
     try:
         interaction = client.interactions.create(**argumentos)
     except Exception as e:
-        print(f"[Gemini] {e}")
+        print(f"[Gemini] {modelo}: {e}")
         raise _traduzir_erro(e) from e
-    
+
     try:
         usage_gemini.registrar(
             usage_gemini.tokens_da_interacao(interaction, prompt)
@@ -97,7 +110,26 @@ def perguntar_gemini(comando: str, memoria: str = "") -> str:
     if not texto:
         raise ErroLLM("gemini", "resposta vazia")
 
+    print(f"[Gemini] {modelo} ok")
     return texto
+
+
+def perguntar_gemini(comando: str, memoria: str = "", tarefa: str = "conversa") -> str:
+    """
+    tarefa="longo" usa GEMINI_MODEL (3.6 Flash); as demais usam o modelo
+    de volume. Se o modelo "longo" estourar a cota, tenta o de volume.
+    Em caso de falha levanta ErroCota, ErroIndisponivel ou ErroLLM.
+    """
+    prompt = montar_prompt(comando, memoria)
+    modelo = _modelo_da_tarefa(tarefa)
+
+    try:
+        return _gerar_texto(prompt, modelo)
+    except ErroCota:
+        if modelo == GEMINI_MODEL_VOLUME:
+            raise
+        print(f"[Gemini] cota de {modelo} esgotada; usando {GEMINI_MODEL_VOLUME}")
+        return _gerar_texto(prompt, GEMINI_MODEL_VOLUME)
 
 # ================================================================
 # GEMINI — IMAGEM
@@ -164,7 +196,9 @@ def perguntar_gemini_imagem(comando: str, imagem_data_url: str, memoria: str = "
     ]
 
     try:
-        interaction = client.interactions.create(model=GEMINI_MODEL, input=entrada)
+        interaction = client.interactions.create(
+            model=GEMINI_MODEL_VOLUME, input=entrada
+        )
     except Exception as e:
         print(f"[Gemini imagem] {e}")
         raise _traduzir_erro(e) from e
