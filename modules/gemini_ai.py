@@ -3,6 +3,7 @@ import os
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 from core.prompt import montar_prompt
 from core.llm_erros import ErroLLM, ErroCota, ErroIndisponivel
@@ -36,7 +37,10 @@ if not api_key:
         "GEMINI_API_KEY não encontrada no arquivo .env"
     )
 
-client = genai.Client(api_key=api_key)
+client = genai.Client(
+    api_key=api_key,
+    http_options=types.HttpOptions(timeout=60_000),  # 60 s, em milissegundos
+)
 
 
 # ================================================================

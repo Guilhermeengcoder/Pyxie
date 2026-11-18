@@ -1374,7 +1374,7 @@ class Brain:
         elif tarefa != "conversa":
             # Conteúdo grande ou continuação dele: o roteador só atrapalharia.
             decisao_busca = {"acao": "nenhuma", "busca": False}
-        elif "```" not in mensagem_para_ia:
+        elif not conteudo_extenso:
             decisao_busca = decidir_busca(
                 mensagem_para_ia[-1000:],   # em texto longo, o pedido costuma estar no fim
                 sessao.ultima_pergunta,
