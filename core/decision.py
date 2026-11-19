@@ -71,15 +71,17 @@ def _checar_saudacao(msg: str):
 
 
 def _checar_identidade(msg: str):
+    msg_norm = normalizar(msg)
+
+    # Só pergunta curta e direta. Frases longas que citam "voce" ou "IA" vão ao LLM.
+    if len(msg_norm.split()) > 6:
+        return 0.0
+
     padroes = [
-        "quem e voce", "qual seu nome",
+        "quem e voce", "quem e vc", "qual seu nome", "qual e o seu nome",
         "se apresente", "quem te criou",
     ]
-    msg_norm = normalizar(msg)
-    for p in padroes:
-        if p in msg_norm:
-            return 1.0
-    return 0.0
+    return 1.0 if any(p in msg_norm for p in padroes) else 0.0
 
 
 

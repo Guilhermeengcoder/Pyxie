@@ -185,18 +185,23 @@ def perguntar_gemini_imagem(comando: str, imagem_data_url: str, memoria: str = "
 
     Em caso de falha levanta ErroCota, ErroIndisponivel ou ErroLLM.
     """
-    mime, dados = _separar_data_url(imagem_data_url)
+    imagens = (
+        list(imagem_data_url)
+        if isinstance(imagem_data_url, (list, tuple))
+        else [imagem_data_url]
+    )
+    separadas = [_separar_data_url(u) for u in imagens]
 
     pergunta = (comando or "").strip() or "Descreva o que você vê nesta imagem."
     pergunta += (
-        "\n(O usuário anexou uma imagem. Responda com base no que você vê nela.)"
+        f"\n(O usuário anexou {len(separadas)} imagem(ns). "
+        "Responda com base no que você vê nelas.)"
     )
 
     prompt = montar_prompt(pergunta, SEM_HISTORICO)
 
-    entrada = [
-        {"type": "text", "text": prompt},
-        {"type": "image", "data": dados, "mime_type": mime},
+    entrada = [{"type": "text", "text": prompt}] + [
+        {"type": "image", "data": d, "mime_type": m} for m, d in separadas
     ]
 
     try:

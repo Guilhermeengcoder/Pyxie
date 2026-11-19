@@ -4,8 +4,9 @@ from typing import List, Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from core import edicao_arquivo
 from core import usage_groq
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from core import cloudflare_imagem
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -17,6 +18,7 @@ from core import llm
 from core import llm_config
 from core import usage_servicos
 from core import db
+from core import galeria
 from core import projetos
 from core.llm_erros import ErroLLM, mensagem_de_erro_llm
 from core.filtro_segredos import detectar_segredos
@@ -153,6 +155,26 @@ def perguntar(pergunta: Pergunta):
 
         if len(arq.conteudo) > 500_000:
             raise HTTPException(status_code=413, detail="Arquivo grande demais (máximo 500 KB).")
+        
+        if edicao_arquivo.eh_pedido_de_edicao(mensagem):
+         try:
+             r = edicao_arquivo.editar(arq.nome, arq.conteudo, mensagem)
+         except ErroLLM as erro:
+             raise HTTPException(status_code=503, detail=mensagem_de_erro_llm(erro))
+
+         # O arquivo inteiro NÃO entra no histórico (economiza tokens).
+         sessao.stm.add_message("user", f"[arquivo anexado: {arq.nome}] {mensagem}")
+         sessao.stm.add_message("assistant", r["resposta"])
+         sessao.ultima_pergunta = mensagem
+
+         return {
+             "resposta": r["resposta"],
+             "imagem_id": None,
+             "memoria_candidata": False,
+             "arquivo_editado": r["arquivo"],
+             "uso": _uso_atual(),
+             "aviso": llm.aviso_da_requisicao(),
+         }
 
         try:
             resumo = resumo_arquivo.resumir(arq.nome, arq.conteudo)
@@ -241,10 +263,36 @@ def uso_servicos():
 
 @app.get("/imagens/{imagem_id}", dependencies=[Depends(exigir_token)])
 def ver_imagem(imagem_id: str):
-    caminho = cloudflare_imagem.caminho_da_imagem(imagem_id)
+    caminho = (
+        cloudflare_imagem.caminho_da_imagem(imagem_id)
+        or galeria.garantir_em_disco(imagem_id)
+    )
     if not caminho:
         raise HTTPException(status_code=404, detail="Imagem não encontrada.")
     return FileResponse(caminho)
+
+# =============================================================
+# GALERIA DE IMAGENS
+# =============================================================
+
+@app.get("/galeria", dependencies=[Depends(exigir_token)])
+def listar_galeria(limite: int = 100):
+    return galeria.listar(limite)
+
+
+@app.get("/galeria/{imagem_id}/miniatura", dependencies=[Depends(exigir_token)])
+def miniatura_galeria(imagem_id: str):
+    dados = galeria.obter_miniatura(imagem_id)
+    if not dados:
+        raise HTTPException(status_code=404, detail="Miniatura não encontrada.")
+    return Response(content=dados, media_type="image/jpeg")
+
+
+@app.delete("/galeria/{imagem_id}", dependencies=[Depends(exigir_token)])
+def excluir_da_galeria(imagem_id: str):
+    if not galeria.excluir(imagem_id):
+        raise HTTPException(status_code=404, detail="Imagem não encontrada.")
+    return {"ok": True}
 
 
 # =============================================================

@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from core import edicao_imagem
 from core import grafico
 from core import cloudflare_imagem
 from core.language import traduzir_para_ingles
@@ -30,6 +31,7 @@ from core import tavily_search
 from core.filtro_segredos import detectar_segredos
 from core import imagem_web
 from core import capacidades
+from core import galeria
 
 
 from core.llm_erros import (
@@ -493,7 +495,9 @@ def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "",
         "Uma pergunta nova e independente NÃO herda o assunto da conversa "
         "recente: monte a consulta só com o que a própria mensagem pergunta. "
         "Nunca use busca para pedidos de imagem ou gráfico.\n"
-        '- "nenhuma": conversa, opinião, criação de texto, código, matemática, '
+        '- "nenhuma": conversa, opinião, gostos e curiosidades pessoais do usuário '
+        "(time, banda, hobbies; busque só se ele pedir placar, resultado ou notícia), "
+        "criação de texto, código, matemática, "
         "conhecimento atemporal, problemas técnicos e dúvidas sobre "
         "os recursos da PYXIE.\n"
         f"{bloco_memoria}\n"
@@ -923,6 +927,23 @@ class Brain:
                 historico += f"PYXIE: {m['content']}\n"
 
         sessao.stm.add_message("user", f"[imagem enviada] {pergunta}")
+        
+        # Guarda a imagem (edições futuras + galeria) e tenta editar antes de descrever.
+        sessao.ultima_imagem_id = None
+        try:
+            sessao.ultima_imagem_id = edicao_imagem.salvar_data_url(imagem)
+        except Exception as erro:
+            print(f"[edicao_imagem] não guardei a imagem: {erro}")
+
+        if sessao.ultima_imagem_id:
+            self._galeria(sessao, sessao.ultima_imagem_id, "enviada", pergunta[:200])
+
+            if edicao_imagem.parece_pedido_de_edicao(message or ""):
+                resposta_edicao = self._editar_imagem(sessao, message)
+                if resposta_edicao:
+                    return resposta_edicao
+        
+        
 
         erro_llm = None
         try:
@@ -933,6 +954,12 @@ class Brain:
             erro_llm = erro
 
         falhou = not resposta
+        
+        if not falhou and sessao.ultima_imagem_id:
+            galeria.descrever(
+                sessao.ultima_imagem_id,
+                f"Foto enviada. Pedido: {pergunta[:80]}. Conteúdo: {resposta[:200]}",
+            )
 
         if falhou:
             if isinstance(erro_llm, (ErroCota, ErroIndisponivel)):
@@ -1296,6 +1323,7 @@ class Brain:
                     chat_id=sessao.chat_id,
                 )
                 sessao.imagem_pendente = imagem["id"]
+                sessao.ultima_imagem_id = imagem["id"]
                 resumo = descricao.strip().splitlines()[-1][:80]
                 texto = f"Pronto! Aqui está a imagem: {resumo}."
             except ErroLLM as erro:
@@ -1316,6 +1344,11 @@ class Brain:
         try:
             resultado = imagem_web.montar(itens)
             sessao.imagem_pendente = resultado["id"]
+            sessao.ultima_imagem_id = resultado["id"]
+            
+            self._galeria(sessao, resultado["id"], "web", ", ".join(resultado["rotulos"]))
+            
+            #self._galeria(sessao, imagem["id"], "gerada", descricao)
 
             inicio = "Aqui está" if len(resultado["rotulos"]) == 1 else "Aqui estão"
             texto = f"{inicio}: {', '.join(resultado['rotulos'])}."
@@ -1336,9 +1369,104 @@ class Brain:
         self._finalizar(sessao, mensagem_original, resposta_final)
         return resposta_final
     
+    
+    # ----------------------------------------------------------
+    # EDIÇÃO SIMPLES DE IMAGEM (Pillow)
+    # ----------------------------------------------------------
+
+    def _editar_imagem(self, sessao, mensagem):
+        """Edita sessao.ultima_imagem_id. None = não era edição (segue o fluxo)."""
+        if not sessao.ultima_imagem_id:
+            return None
+
+        pedido = edicao_imagem.interpretar(mensagem)
+        if pedido is None:
+            return None
+
+        if pedido["criativa"]:
+            texto = (
+                "Isso é uma edição criativa e ainda não faço (precisaria de um modelo "
+                "de edição de imagem). Por enquanto faço ajustes simples: cortar, girar, "
+                "espelhar, redimensionar, brilho, contraste, saturação, nitidez, "
+                "preto e branco, sépia, negativo e desfoque."
+            )
+        elif not pedido["operacoes"]:
+            return None
+        else:
+            try:
+                nova = edicao_imagem.aplicar_e_salvar(
+                    sessao.ultima_imagem_id, pedido["operacoes"]
+                )
+                sessao.imagem_pendente = nova["id"]
+                sessao.ultima_imagem_id = nova["id"]
+                texto = f"Pronto, {nova['resumo']}."
+                
+                self._galeria(sessao, nova["id"], "editada", f"{nova['resumo']} (pedido: {mensagem[:100]})")
+                               
+            except (ValueError, OSError) as erro:
+                print(f"[edicao_imagem] {erro}")
+                texto = "Não consegui aplicar essa edição na imagem."
+
+        resposta_final = self.personality.aplicar(texto)
+        sessao.regeneracao_pergunta = None
+        self._finalizar(sessao, mensagem, resposta_final)
+        return resposta_final
+    
+    def _galeria(self, sessao, imagem_id, origem, descricao=""):
+        """Guarda na galeria. Nunca levanta erro."""
+        galeria.registrar(imagem_id, origem, descricao, sessao.chat_id)
+        
+        # ----------------------------------------------------------
+    # REVER / COMPARAR IMAGENS DA GALERIA
+    # ----------------------------------------------------------
+
+    def _analisar_imagens(self, sessao, mensagem):
+        """Compara ou revê imagens guardadas. None = não se aplica (segue o fluxo)."""
+        itens = galeria.catalogo(sessao.chat_id, 30)
+        if not itens:
+            return None
+
+        escolhidas = galeria.escolher(mensagem, itens)
+        if not escolhidas:
+            return None
+
+        urls, rotulos = [], []
+        for it in escolhidas:
+            url = galeria.como_data_url(it["imagem_id"])
+            if url:
+                urls.append(url)
+                rotulos.append(it["descricao"] or it["origem"])
+
+        if not urls:
+            return None
+
+        legenda = "; ".join(
+            f"Imagem {i} = {r[:150]}" for i, r in enumerate(rotulos, 1)
+        )
+        pedido = (
+            f"{mensagem}\n\n(Anexei {len(urls)} imagem(ns) da minha galeria, nesta "
+            f"ordem: {legenda}.)"
+        )
+
+        try:
+            resposta = perguntar_llm_imagem(
+                pedido, urls, self._conversa_recente(sessao, n=4, max_chars=1000)
+            )
+        except Exception as erro:
+            print(f"[galeria] análise falhou: {erro}")
+            resposta_final = self.personality.aplicar(mensagem_de_erro_llm(erro))
+            self._finalizar(sessao, mensagem, resposta_final, erro=True)
+            return resposta_final
+
+        resposta_final = self.personality.aplicar(resposta)
+        sessao.regeneracao_pergunta = None
+        self._finalizar(sessao, mensagem, resposta_final)
+        return resposta_final
+    
     # ----------------------------------------------------------
     # PROCESSAMENTO DE UMA ÚNICA TAREFA
     # ----------------------------------------------------------
+    
 
     def _processar_unica(self, message, sessao: ChatSession):
         if sessao.stm.is_expired():
@@ -1369,6 +1497,24 @@ class Brain:
         sessao.stm.add_message("user", mensagem_original)
         sessao.context.add_message(mensagem_original)
         tarefa = tarefa_do_pedido(sessao, mensagem_para_ia)
+
+        if (
+            sessao.ultima_imagem_id
+            and not conteudo_extenso
+            and edicao_imagem.parece_pedido_de_edicao(mensagem_para_ia)
+        ):
+            resposta_img = self._editar_imagem(sessao, mensagem_para_ia)
+            if resposta_img:
+                return resposta_img
+
+        if (
+            not conteudo_extenso
+            and not eh_pedido_de_imagem(mensagem_para_ia)
+            and galeria.parece_referencia_a_imagens(mensagem_para_ia)
+        ):
+            resposta_img = self._analisar_imagens(sessao, mensagem_para_ia)
+            if resposta_img:
+                return resposta_img
 
         # Roteador: uma única chamada por mensagem. Código (```) não passa por ele.
         decisao_busca = None
@@ -1633,14 +1779,14 @@ class Brain:
             self._finalizar(sessao, message, resposta_final)
             return resposta_final
 
-        if "quem e voce" in original_message or "quem e vc" in original_message:
+        if len(original_message.split()) <= 6 and ("quem e voce" in original_message or "quem e vc" in original_message):
             resposta_final = self.personality.aplicar(
                 f"Eu sou {obter_nome()}, uma assistente criada por {obter_criador()}."
             )
             self._finalizar(sessao, message, resposta_final)
             return resposta_final
 
-        if "quem te criou" in original_message:
+        if len(original_message.split()) <= 6 and "quem te criou" in original_message:
             resposta_final = self.personality.aplicar(
                 f"Eu fui criada por {obter_criador()}."
             )

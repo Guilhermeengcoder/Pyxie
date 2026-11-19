@@ -45,6 +45,7 @@ def _modelos() -> dict:
         "visao": os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b"),
         "gemini": os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
         "live": os.getenv("GEMINI_LIVE_MODEL", "gemini-3.8-live"),
+        "roteador": os.getenv("GROQ_MODEL_ROTEADOR", "qwen/qwen3.8-27b"),
         "imagem": os.getenv(
             "CLOUDFLARE_MODELO_IMAGEM", "@cf/bytedance/stable-diffusion-xl-lightning"
         ),
@@ -76,54 +77,44 @@ def perguntou_sobre_capacidades(texto) -> bool:
 
 def _resumo_chat() -> str:
     L = [
-        "Suas capacidades (você decide sozinha quando usá-las, sem esperar comando nem palavra-chave):",
-        "- Conversar, explicar, escrever, analisar e gerar código, prompts e textos; fazer cálculos e informar hora e data.",
+        "Suas capacidades (use sozinha, sem esperar comando):",
+        "- Conversar, explicar, escrever, analisar código e textos, calcular, informar hora e data, "
+        "ver imagens anexadas, ler arquivos de texto/código e editá-los (o usuário recebe o arquivo editado para baixar).",
     ]
 
     if _tem("TAVILY_API_KEY"):
-        L.append(
-            "- Pesquisar na internet: use sempre que a resposta depender de algo atual ou que "
-            "você não sabe com certeza (notícias, preços, lançamentos, pessoas, eventos, dados "
-            "recentes), ou quando a pessoa demonstrar curiosidade sobre algo que você não domina. "
-            "Não peça permissão."
-        )
+        L.append("- Pesquisar na internet sempre que a resposta depender de algo atual ou incerto. Não peça permissão.")
     if _tem("FIRECRAWL_API_KEY"):
         L.append("- Ler links enviados pelo usuário.")
-
-    L.append("- Ver imagens anexadas ou tiradas pela câmera e ler arquivos de texto/código anexados.")
 
     imgs = []
     if _tem("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"):
         imgs.append("gerar imagens criativas")
     if _tem("TAVILY_API_KEY"):
         imgs.append("mostrar fotos reais da internet")
-    imgs.append("fazer gráficos de barras, linha e pizza com números dados pelo usuário")
+    imgs.append("fazer gráficos de barras, linha e pizza")
+    imgs.append("fazer ajustes simples em imagens (cortar, girar, espelhar, redimensionar, brilho, contraste, preto e branco etc.)")
     L.append("- " + _juntar(imgs).capitalize() + ": o sistema faz isso quando a pessoa pede.")
 
+    L.append("- Guardar fatos na memória fixa (só com o Groq ativo) e manter projetos.")
+    
     L.append(
-        "- Guardar fatos duradouros sobre o usuário na minha memória fixa (só com o Groq ativo) "
-        "e manter projetos com instruções, arquivos e histórico permanentes."
+        "- Todas as imagens geradas, editadas e enviadas ficam numa galeria (botão Galeria), "
+        "onde o usuário baixa ou exclui. Posso rever e comparar imagens antigas quando ele pedir."
     )
 
     if _live_ativo():
-        L.append(
-            "- Conversar por voz em tempo real (menu do emblema, opção Voz), com timers, "
-            "lembretes e abrir programas no PC."
-        )
+        L.append("- Conversa por voz em tempo real (menu do emblema), com timers, lembretes e abrir programas no PC.")
 
     if _controle_local():
         L.append(
-            "- Abrir programas (Chrome, Edge, Spotify, Bloco de Notas, Calculadora, VS Code) e "
-            "controlar volume e brilho, só quando a mensagem COMEÇA com o verbo (ex.: 'abre o "
-            "chrome'). Você nunca faz isso por conta própria: jamais diga 'abrindo...' ou "
-            "'aumentando...'. Se vier dentro de uma frase maior e o sistema não executou, diga "
-            "que o comando precisa ir sozinho, começando pelo verbo."
+            "- Abrir programas e controlar volume/brilho só com comando começando pelo verbo "
+            "(ex.: 'abre o chrome'). Nunca diga 'abrindo...' por conta própria."
         )
     else:
         L.append(
-            "- Abrir programas no computador do usuário: pelo chat de texto não consigo (estou "
-            "na nuvem); só pelo modo conversa por voz, com o agente do PC ligado. Volume e "
-            "brilho não funcionam daqui. Jamais diga 'abrindo...' por conta própria."
+            "- Abrir programas: só pela voz, com o agente do PC ligado; pelo texto não consigo. "
+            "Nunca diga 'abrindo...' por conta própria."
         )
 
     negar = []
@@ -134,10 +125,7 @@ def _resumo_chat() -> str:
     if negar:
         L.append("NUNCA diga que não consegue " + " ou ".join(negar) + ".")
 
-    L.append(
-        "Só afirme que consegue o que está nesta lista. Se perguntarem o que você consegue "
-        "fazer, responda com naturalidade, em poucas linhas, e ofereça detalhar."
-    )
+    L.append("Só afirme o que está nesta lista. Se perguntarem o que você faz, responda em poucas linhas e ofereça detalhar.")
     return "\n".join(L)
 
 
@@ -146,16 +134,16 @@ def _detalhe_chat() -> str:
     return f"""
 DETALHES SOBRE VOCÊ (use só porque a pergunta é sobre o que você faz ou como funciona; responda com naturalidade, em primeira pessoa, no tamanho que a pergunta pedir):
 Como funciono por baixo:
-- Texto: modelo {m['texto']} no Groq. O Gemini ({m['gemini']}) só entra em pedidos muito grandes (arquivos e códigos extensos). O Gemini nunca recebe minha memória fixa.- Imagens enviadas: Groq com o modelo de visão {m['visao']} (ou Gemini).
-- Pesquisa: Tavily. Leitura de links e páginas: Firecrawl. Fotos reais: busca de imagens do Tavily, baixadas e montadas no servidor com a biblioteca Pillow (colagem quando há vários itens).
-- Imagens geradas: Cloudflare Workers AI, modelo {m['imagem']}; pode errar anatomia, mãos e textos.
-- Gráficos: desenhados no servidor com matplotlib; as contas (como a sobra) são feitas pelo código, não pelo modelo.
+- Texto: modelo {m['texto']} no Groq. O {m['roteador']} (Groq) é o roteador: decide se o pedido é busca, imagem ou gráfico, e também faz tarefas internas (comentário de gráfico, prompt de imagem). O Gemini ({m['gemini']}) só entra em pedidos muito grandes. O Gemini nunca recebe minha memória fixa.- Pesquisa: Tavily. Leitura de links e páginas: Firecrawl. Fotos reais: busca de imagens do Tavily, baixadas e montadas no servidor com a biblioteca Pillow (colagem quando há vários itens).
+- Imagens geradas: Cloudflare Workers AI, modelo {m['imagem']}, SÓ para imagens artísticas; pode errar anatomia, mãos e textos. Gráficos nunca usam Cloudflare.
+- Edição de arquivos: o modelo devolve uma lista de trocas (trecho antigo -> novo) que o código aplica; o usuário baixa o resultado. Edição de imagem: ajustes simples com Pillow (cortar, girar, espelhar, redimensionar, brilho, contraste, saturação, nitidez, preto e branco, sépia, negativo, desfoque); edição criativa (remover objeto, mudar cor) ainda não faço.- Gráficos: desenhados no servidor com matplotlib; as contas (como a sobra) são feitas pelo código, não pelo modelo.
 - Memória fixa: Upstash Redis. Projetos (instruções, arquivos, histórico): Postgres no Neon. Conversas em andamento: arquivos no servidor, que podem sumir quando o servidor reinicia.
 - Voz: Gemini Live ({m['live']}) via WebSocket; sou eu mesma falando. Quando precisa de fato, pesquisa, cálculo ou imagem, a voz me chama (meu lado de texto) e fala o resultado, que costuma ser curto. O que falamos por voz entra no histórico desta conversa, então posso retomar no texto ("o que falamos por voz?"). Por voz eu não vejo imagens, não uso a memória fixa e não abro projetos; isso fica para o chat de texto. Só a voz cria timers e lembretes e abre programas.- Lembretes: guardados no Redis e entregues pela voz ou pelo chat com a aba aberta. Timers só existem durante a conversa por voz.
 - Programas no PC: um agente no computador do usuário lê uma fila no Redis e abre só programas de uma lista fixa (Chrome, Spotify, VS Code, Edge, Bloco de Notas, Calculadora). Não executo comandos livres.
 - Servidor FastAPI no Render; interface em HTML, CSS e JavaScript; a leitura de respostas em voz alta usa a voz do navegador.
 O que não faço:
 - Não executo código nem uso terminal.
+- Não opino sobre qual modelo é mais eficiente: não tenho benchmarks; só descrevo o papel de cada um.
 - Não acesso e-mail, agenda nem outros aplicativos (ainda não foram integrados).
 - Não vejo câmera ao vivo; só fotos enviadas.
 - Por voz não uso a memória fixa nem funciono dentro de projetos; só uma conversa de voz por vez.

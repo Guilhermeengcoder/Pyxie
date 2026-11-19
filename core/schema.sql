@@ -54,3 +54,18 @@ CREATE TABLE IF NOT EXISTS projeto_arquivos (
 );
 
 ALTER TABLE projeto_arquivos ADD COLUMN IF NOT EXISTS resumo TEXT;
+
+CREATE TABLE IF NOT EXISTS galeria (
+    id          BIGSERIAL PRIMARY KEY,
+    imagem_id   CHAR(32) UNIQUE NOT NULL,
+    origem      TEXT NOT NULL,             -- gerada, editada, web, grafico, enviada
+    descricao   TEXT,
+    chat_id     TEXT,
+    formato     TEXT NOT NULL,
+    tamanho     INT,
+    criada_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    miniatura   BYTEA,
+    dados       BYTEA NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_galeria_criada ON galeria (criada_em DESC);

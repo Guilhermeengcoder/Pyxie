@@ -33,26 +33,28 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
     """
     pergunta = (comando or "").strip() or "Descreva o que você vê nesta imagem."
 
+    imagens = (
+        list(imagem_data_url)
+        if isinstance(imagem_data_url, (list, tuple))
+        else [imagem_data_url]
+    )
+
     pergunta += (
-        "\n(O usuário anexou uma imagem. Responda com base no que você vê nela. "
-        "Dê direto a resposta final, sem mostrar raciocínio, rascunho ou "
+        f"\n(O usuário anexou {len(imagens)} imagem(ns). Responda com base no que você "
+        "vê nelas. Dê direto a resposta final, sem mostrar raciocínio, rascunho ou "
         "autocorreções.)"
     )
 
     prompt = _montar_prompt(pergunta, memoria)
 
+    conteudo = [{"type": "text", "text": prompt}] + [
+        {"type": "image_url", "image_url": {"url": u}} for u in imagens
+    ]
+
     try:
         resposta_bruta = client.chat.completions.with_raw_response.create(
             model=GROQ_VISION_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": imagem_data_url}},
-                    ],
-                }
-            ],
+            messages=[{"role": "user", "content": conteudo}],
             max_completion_tokens=MAX_TOKENS_RESPOSTA,
             reasoning_effort="none",
         )

@@ -482,34 +482,34 @@ function apagarConversa(id) {
     renderizarLista();
 }
 
-function registrarMensagem(conversa, tipo, texto, miniatura, imagemId) {
-    const registro = {
-        tipo: tipo,
-        texto: texto
-    };
+const arquivosEmMemoria = new WeakMap();
+const LIMITE_ARQUIVO_PERSISTIDO = 150000;
 
-    if (miniatura) {
-        registro.miniatura = miniatura;
-    }
+function registrarMensagem(conversa, tipo, texto, miniatura, imagemId, arquivo) {
+    const registro = { tipo: tipo, texto: texto };
 
-    if (imagemId) {
-        registro.imagemId = imagemId;
+    if (miniatura) registro.miniatura = miniatura;
+    if (imagemId) registro.imagemId = imagemId;
+
+    if (arquivo && arquivo.conteudo) {
+        if (arquivo.conteudo.length <= LIMITE_ARQUIVO_PERSISTIDO) {
+            registro.arquivo = arquivo;
+        } else {
+            arquivosEmMemoria.set(registro, arquivo);
+        }
     }
 
     conversa.mensagens.push(registro);
     conversa.atualizadaEm = Date.now();
 
-    // A primeira mensagem do usuário vira o título da conversa
     if (tipo === "usuario" && conversa.titulo === "Nova conversa") {
         const base = texto || "Imagem";
-
-        conversa.titulo = base.length > 40
-            ? base.slice(0, 40).trim() + "…"
-            : base;
+        conversa.titulo = base.length > 40 ? base.slice(0, 40).trim() + "…" : base;
     }
 
     salvarEstado();
     renderizarLista();
+    return registro;
 }
 
 
@@ -1895,6 +1895,56 @@ async function guardarNaMemoria(conversaId, botaoAcao) {
     }
 }
 
+function nomeEditado(nome) {
+    const i = nome.lastIndexOf(".");
+    return i > 0 ? nome.slice(0, i) + "-editado" + nome.slice(i) : nome + "-editado";
+}
+
+function baixarArquivo(nome, conteudo) {
+    const blob = new Blob([conteudo], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = nome;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function criarCartaoArquivo(arq) {
+    const cartao = document.createElement("div");
+    cartao.classList.add("cartao-arquivo");
+
+    const rotulo = document.createElement("span");
+    rotulo.classList.add("cartao-arquivo-nome");
+    rotulo.textContent = "📎 " + nomeEditado(arq.nome);
+    rotulo.title = arq.nome;
+
+    const baixar = document.createElement("button");
+    baixar.type = "button";
+    baixar.classList.add("camera-btn", "camera-btn-principal");
+    baixar.textContent = "Baixar";
+    baixar.addEventListener("click", () =>
+        baixarArquivo(nomeEditado(arq.nome), arq.conteudo)
+    );
+
+    const reeditar = document.createElement("button");
+    reeditar.type = "button";
+    reeditar.classList.add("camera-btn");
+    reeditar.textContent = "Editar de novo";
+    reeditar.addEventListener("click", () => {
+        if (pendenteId) return;
+        definirArquivoPendente(arq.nome, arq.conteudo);
+        input.focus();
+    });
+
+    cartao.append(rotulo, baixar, reeditar);
+    return cartao;
+}
+
 function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
     const mensagem = document.createElement("div");
 
@@ -1950,6 +2000,10 @@ function desenharMensagem(texto, tipo, miniatura, opcoes = {}) {
                 });
 
             textoMensagem.appendChild(figura);
+        }
+
+        if (opcoes.arquivo) {
+            textoMensagem.appendChild(criarCartaoArquivo(opcoes.arquivo));
         }
 
         renderizarTextoComCodigo(texto, textoMensagem);
@@ -2170,6 +2224,7 @@ function renderizarMensagens() {
             permitirGuardar: permitirGuardar,
             conversaId: m.tipo === "pyxie" ? conversa.id : null,
             imagemId: m.imagemId || null,
+            arquivo: m.arquivo || arquivosEmMemoria.get(m) || null,
             rolarParaTopo: ehUltimaMensagem && m.tipo === "pyxie" && respostaRecemChegada
         });
     });
@@ -2880,11 +2935,14 @@ async function adicionarArquivoTexto(arquivo) {
         return;
     }
 
-    removerImagemPendente();
+        definirArquivoPendente(arquivo.name, conteudo);
+}
 
+function definirArquivoPendente(nome, conteudo) {
+    removerImagemPendente();
     removerArquivoPendente();
 
-    arquivoPendente = { nome: arquivo.name, conteudo };
+    arquivoPendente = { nome, conteudo };
 
     const chip = document.createElement("div");
     chip.id = "previa-arquivo";
@@ -2892,7 +2950,7 @@ async function adicionarArquivoTexto(arquivo) {
 
     const rotulo = document.createElement("span");
     rotulo.textContent =
-        "📎 " + arquivo.name + " (" + Math.max(1, Math.round(arquivo.size / 1024)) + " KB)";
+        "📎 " + nome + " (" + Math.max(1, Math.round(conteudo.length / 1024)) + " KB)";
 
     const remover = document.createElement("button");
     remover.type = "button";
@@ -2903,7 +2961,7 @@ async function adicionarArquivoTexto(arquivo) {
     chip.append(rotulo, remover);
     previa.insertAdjacentElement("afterend", chip);
 
-    input.placeholder = "Pergunte algo sobre o arquivo (opcional)";
+    input.placeholder = "O que fazer neste arquivo? (ex.: troque X por Y)";
 }
 
 // Ponto de entrada comum: seletor de arquivo, colar, arrastar
@@ -3181,6 +3239,7 @@ async function enviarMensagem() {
     // Limpa campo e anexo
     input.value = "";
     ajustarAlturaInput();
+    removerArquivoPendente();
     removerImagemPendente();
 
     // Desativa controles enquanto processa
@@ -3192,6 +3251,7 @@ async function enviarMensagem() {
     let respostaTexto = null;
     let deuErro = false;
     let imagemIdResposta = null;   // declare junto de respostaTexto/deuErro
+    let arquivoEditado = null;
 
     try {
         const url = conversa.projetoId
@@ -3204,7 +3264,8 @@ async function enviarMensagem() {
                 mensagem: texto,
                 chat_id: conversa.id,
                 historico: historico,
-                imagem: imagem ? imagem.dataUrl : null
+                imagem: imagem ? imagem.dataUrl : null,
+                arquivo: arquivo ? { nome: arquivo.nome, conteudo: arquivo.conteudo } : null
             };
 
         const resposta = await apiFetch(url, {
@@ -3229,6 +3290,7 @@ async function enviarMensagem() {
 
         respostaTexto = dados.resposta;
         imagemIdResposta = dados.imagem_id || null;
+        arquivoEditado = dados.arquivo_editado || null;
         memoriaCandidataId = dados.memoria_candidata ? conversa.id : null;
 
         if (dados.uso) {
@@ -3268,7 +3330,7 @@ async function enviarMensagem() {
             );
         }
         } else if (aindaExiste) {
-            registrarMensagem(conversa, "pyxie", respostaTexto, null, imagemIdResposta);
+            registrarMensagem(conversa, "pyxie", respostaTexto, null, imagemIdResposta, arquivoEditado);
 
         if (visivel) {
             // Redesenha para habilitar o botão de regeneração na última resposta.
@@ -5048,3 +5110,247 @@ document.addEventListener("keydown", (evento) => {
         fecharImagemTelaCheia();
     }
 }, true);
+
+// ========================================
+// GALERIA DE IMAGENS
+// ========================================
+
+const botaoGaleria = document.getElementById("abrir-galeria");
+
+const ROTULO_ORIGEM = {
+    gerada: "Gerada",
+    editada: "Editada",
+    web: "Da web",
+    grafico: "Gráfico",
+    enviada: "Enviada"
+};
+
+let urlsGaleria = [];
+
+function tratarTeclaGaleria(evento) {
+    if (evento.key === "Escape") {
+        fecharGaleria();
+    }
+}
+
+function fecharGaleria() {
+    const modal = document.getElementById("galeria-modal");
+
+    if (modal) {
+        modal.remove();
+    }
+
+    urlsGaleria.forEach(u => URL.revokeObjectURL(u));
+    urlsGaleria = [];
+
+    document.removeEventListener("keydown", tratarTeclaGaleria);
+}
+
+async function buscarImagemBlob(caminho) {
+    const r = await apiFetch(caminho);
+
+    if (!r.ok) {
+        throw new Error("HTTP " + r.status);
+    }
+
+    return r.blob();
+}
+
+async function abrirImagemDaGaleria(id) {
+    try {
+        const blob = await buscarImagemBlob(`/imagens/${encodeURIComponent(id)}`);
+        const url = URL.createObjectURL(blob);
+        urlsGaleria.push(url);
+        abrirImagemTelaCheia(url, "Imagem da galeria");
+    } catch (erro) {
+        console.error("Erro ao abrir imagem da galeria:", erro);
+        mostrarAviso("Não foi possível abrir a imagem.");
+    }
+}
+
+async function baixarImagemDaGaleria(id) {
+    try {
+        const blob = await buscarImagemBlob(`/imagens/${encodeURIComponent(id)}`);
+        const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "pyxie-" + id.slice(0, 8) + "." + ext;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (erro) {
+        console.error("Erro ao baixar imagem da galeria:", erro);
+        mostrarAviso("Não foi possível baixar a imagem.");
+    }
+}
+
+function criarCartaoGaleria(item, grade, info) {
+    const cartao = document.createElement("article");
+    cartao.className = "galeria-card";
+
+    const miniatura = document.createElement("img");
+    miniatura.className = "galeria-miniatura";
+    miniatura.alt = item.descricao || "Imagem da galeria";
+    miniatura.addEventListener("click", () => abrirImagemDaGaleria(item.imagem_id));
+
+    buscarImagemBlob(`/galeria/${encodeURIComponent(item.imagem_id)}/miniatura`)
+        .then(blob => {
+            const url = URL.createObjectURL(blob);
+            urlsGaleria.push(url);
+            miniatura.src = url;
+        })
+        .catch(() => { miniatura.alt = "(miniatura indisponível)"; });
+
+    const infoCartao = document.createElement("div");
+    infoCartao.className = "galeria-info";
+
+    const origem = document.createElement("strong");
+    origem.textContent = ROTULO_ORIGEM[item.origem] || item.origem;
+
+    const data = document.createElement("span");
+    data.textContent = new Date(item.criada_em).toLocaleString("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short"
+    });
+
+    const desc = document.createElement("div");
+    desc.className = "galeria-desc";
+    desc.textContent = item.descricao || "";
+    desc.title = item.descricao || "";
+
+    infoCartao.append(origem, data, desc);
+
+    const acoes = document.createElement("div");
+    acoes.className = "galeria-acoes";
+
+    const baixar = document.createElement("button");
+    baixar.type = "button";
+    baixar.className = "camera-btn";
+    baixar.textContent = "Baixar";
+    baixar.addEventListener("click", () => baixarImagemDaGaleria(item.imagem_id));
+
+    const excluir = document.createElement("button");
+    excluir.type = "button";
+    excluir.className = "camera-btn galeria-excluir";
+    excluir.textContent = "Excluir";
+
+    excluir.addEventListener("click", async () => {
+        if (!confirm("Excluir esta imagem da galeria? Ela também some dos chats onde apareceu.")) {
+            return;
+        }
+
+        excluir.disabled = true;
+
+        try {
+            const r = await apiFetch(`/galeria/${encodeURIComponent(item.imagem_id)}`, {
+                method: "DELETE"
+            });
+
+            if (!r.ok) {
+                throw new Error("HTTP " + r.status);
+            }
+
+            cartao.remove();
+
+            if (!grade.children.length) {
+                info.textContent = "A galeria está vazia.";
+            }
+        } catch (erro) {
+            console.error("Erro ao excluir imagem:", erro);
+            excluir.disabled = false;
+            mostrarAviso("Não foi possível excluir a imagem.");
+        }
+    });
+
+    acoes.append(baixar, excluir);
+    cartao.append(miniatura, infoCartao, acoes);
+
+    return cartao;
+}
+
+async function abrirGaleria() {
+    fecharGaleria();
+
+    const fundo = document.createElement("div");
+    fundo.id = "galeria-modal";
+    fundo.className = "editor-projeto-fundo";
+
+    const painel = document.createElement("div");
+    painel.className = "editor-projeto-painel galeria-painel";
+    painel.setAttribute("role", "dialog");
+    painel.setAttribute("aria-modal", "true");
+    painel.setAttribute("aria-label", "Galeria de imagens");
+
+    const topo = document.createElement("div");
+    topo.className = "galeria-topo";
+
+    const titulo = document.createElement("h2");
+    titulo.textContent = "Galeria";
+
+    const fechar = document.createElement("button");
+    fechar.type = "button";
+    fechar.className = "galeria-fechar";
+    fechar.textContent = "×";
+    fechar.setAttribute("aria-label", "Fechar galeria");
+    fechar.addEventListener("click", fecharGaleria);
+
+    topo.append(titulo, fechar);
+
+    const info = document.createElement("p");
+    info.className = "editor-projeto-dica";
+    info.textContent = "Carregando...";
+
+    const grade = document.createElement("div");
+    grade.className = "galeria-grade";
+
+    painel.append(topo, info, grade);
+    fundo.appendChild(painel);
+
+    fundo.addEventListener("click", evento => {
+        if (evento.target === fundo) {
+            fecharGaleria();
+        }
+    });
+
+    document.body.appendChild(fundo);
+    document.addEventListener("keydown", tratarTeclaGaleria);
+
+    try {
+        const r = await apiFetch("/galeria");
+
+        if (!r.ok) {
+            throw new Error("HTTP " + r.status);
+        }
+
+        const itens = await r.json();
+
+        if (!document.getElementById("galeria-modal")) {
+            return;   // fechou enquanto carregava
+        }
+
+        if (!Array.isArray(itens) || !itens.length) {
+            info.textContent =
+                "A galeria está vazia. Imagens geradas, editadas e enviadas aparecem aqui.";
+            return;
+        }
+
+        info.textContent =
+            itens.length + " imagem(ns). Clique na miniatura para ver em tela cheia.";
+
+        itens.forEach(item => grade.appendChild(criarCartaoGaleria(item, grade, info)));
+    } catch (erro) {
+        console.error("Erro ao carregar a galeria:", erro);
+        info.textContent = "Não foi possível carregar a galeria (o banco de dados está configurado?).";
+    }
+}
+
+if (botaoGaleria) {
+    botaoGaleria.addEventListener("click", () => {
+        abrirGaleria();
+        fecharSidebarNoCelular();
+    });
+}

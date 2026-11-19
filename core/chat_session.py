@@ -16,6 +16,7 @@ class ChatSession:
         self.ultima_pergunta = None
         self.last_used = time.time()
         self.imagem_pendente = None   # id da imagem gerada nesta resposta
+        self.ultima_imagem_id = None   # imagem mais recente (enviada, gerada ou editada)               
         self.restrito = False   # canal de voz: sem memória fixa
         self.memoria_pendente = None   # {"op": dict, "ate": timestamp}
         self.busca_pendente = None   # {"pergunta", "resposta", "ate"}
