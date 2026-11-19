@@ -104,7 +104,7 @@ def _gerar_texto(prompt: str, modelo: str) -> str:
 
     try:
         usage_gemini.registrar(
-            usage_gemini.tokens_da_interacao(interaction, prompt)
+            usage_gemini.tokens_da_interacao(interaction, prompt), modelo
         )
     except Exception as e:
         print(f"[usage_gemini] {e}")  # nunca quebra a resposta
@@ -209,7 +209,7 @@ def perguntar_gemini_imagem(comando: str, imagem_data_url: str, memoria: str = "
 
     try:
         usage_gemini.registrar(
-            usage_gemini.tokens_da_interacao(interaction, prompt)
+            usage_gemini.tokens_da_interacao(interaction, prompt), GEMINI_MODEL_VOLUME
         )
     except Exception as e:
         print(f"[usage_gemini] {e}")  # nunca quebra a resposta

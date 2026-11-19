@@ -74,7 +74,6 @@ def _checar_identidade(msg: str):
     padroes = [
         "quem e voce", "qual seu nome",
         "se apresente", "quem te criou",
-        "voce e uma ia", "voce e um robo"
     ]
     msg_norm = normalizar(msg)
     for p in padroes:
@@ -178,6 +177,8 @@ def _checar_pergunta_web(msg: str):
     msg_norm = normalizar(msg)
     inicios = [
         "quem foi", "quem e",
+        "quem ganhou", "quem venceu", "quem vai ganhar",
+        "quem e o campeao", "quem foi o campeao",
         "o que e", "o que foi",
         "quando foi", "onde fica",
         "como funciona", "explique",

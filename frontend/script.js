@@ -3639,6 +3639,10 @@ function atualizarPainelUso(uso) {
     } else {
         pararContagemResetGemini();
         atualizarPainelGroq(uso);
+        if (uso.gemini_uso) {
+            if (elGrupoGemini) elGrupoGemini.hidden = false;
+            atualizarPainelGemini(uso.gemini_uso);
+        }
     }
 }
 
@@ -4199,9 +4203,8 @@ const DESCRICAO_MODO = {
     gemini:
         "Gemini: não recebe a memória fixa, mas recebe o histórico da conversa. " +
         "Evite assuntos pessoais.",
-    auto:
-        "Auto: começa pelo Groq e, se ele falhar, usa o Gemini " +
-        "(sem a memória fixa)."
+        auto:
+        "Auto: usa o Groq; pedidos muito grandes (arquivos e códigos extensos) vão ao Gemini."
 };
 
 let modoAtual = null;

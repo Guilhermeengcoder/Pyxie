@@ -16,3 +16,4 @@ data/servicos_uso.json
 data/imagens/
 data/groq_uso.json
 data/lembretes.json
+data/gemini_uso_*.json

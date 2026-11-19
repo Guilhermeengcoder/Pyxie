@@ -4,10 +4,12 @@
 # É estimativa: conta as respostas bem-sucedidas que ESTE app
 # recebeu, não o saldo oficial do Google. Guarda só números.
 # O dia vira à meia-noite do horário do Pacífico (como o RPD).
+# Contagem separada por modelo (os limites do Google são por modelo).
 # =============================================================
 
 import json
 import os
+import re
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -24,7 +26,8 @@ PREFIXO_CHAVE = "pyxie:gemini_uso:"
 TTL_S = 3 * 24 * 3600
 
 _lock = threading.RLock()
-_mem = {"dia": None, "pedidos": 0, "tokens": 0}  # último recurso
+_mem = {}  # último recurso: {modelo: {"dia", "pedidos", "tokens"}}
+_ultimo_modelo = None
 
 
 def _limite(nome):
@@ -33,6 +36,16 @@ def _limite(nome):
         return v if v > 0 else None
     except ValueError:
         return None
+
+
+def _sufixo(modelo):
+    # Lite usa GEMINI_LIMITE_PEDIDOS_DIA_LITE; os demais, o nome sem sufixo.
+    return "_LITE" if "lite" in (modelo or "").lower() else ""
+
+
+def _arquivo(modelo):
+    seguro = re.sub(r"[^A-Za-z0-9_.-]", "_", modelo or "padrao")
+    return ARQUIVO.with_name(f"gemini_uso_{seguro}.json")
 
 
 def _agora_pacifico():
@@ -54,15 +67,15 @@ def _dia_e_reset():
 
 # ---------------- armazenamento ----------------
 
-def _somar_remoto(dia, tokens):
-    chave = PREFIXO_CHAVE + dia
+def _somar_remoto(modelo, dia, tokens):
+    chave = f"{PREFIXO_CHAVE}{modelo}:{dia}"
     memory_json._cmd("HINCRBY", chave, "pedidos", 1)
     memory_json._cmd("HINCRBY", chave, "tokens", tokens)
     memory_json._cmd("EXPIRE", chave, TTL_S)
 
 
-def _ler_remoto(dia):
-    bruto = memory_json._cmd("HGETALL", PREFIXO_CHAVE + dia)
+def _ler_remoto(modelo, dia):
+    bruto = memory_json._cmd("HGETALL", f"{PREFIXO_CHAVE}{modelo}:{dia}")
     if isinstance(bruto, dict):
         dados = bruto
     elif isinstance(bruto, list):
@@ -72,9 +85,9 @@ def _ler_remoto(dia):
     return int(dados.get("pedidos", 0)), int(dados.get("tokens", 0))
 
 
-def _ler_local(dia):
+def _ler_local(modelo, dia):
     try:
-        with ARQUIVO.open("r", encoding="utf-8") as f:
+        with _arquivo(modelo).open("r", encoding="utf-8") as f:
             d = json.load(f)
     except (FileNotFoundError, ValueError, OSError):
         return 0, 0
@@ -83,10 +96,11 @@ def _ler_local(dia):
     return int(d.get("pedidos", 0)), int(d.get("tokens", 0))
 
 
-def _somar_local(dia, tokens):
-    pedidos, total = _ler_local(dia)
-    ARQUIVO.parent.mkdir(parents=True, exist_ok=True)
-    with ARQUIVO.open("w", encoding="utf-8") as f:
+def _somar_local(modelo, dia, tokens):
+    pedidos, total = _ler_local(modelo, dia)
+    arq = _arquivo(modelo)
+    arq.parent.mkdir(parents=True, exist_ok=True)
+    with arq.open("w", encoding="utf-8") as f:
         json.dump(
             {"dia": dia, "pedidos": pedidos + 1, "tokens": total + tokens}, f
         )
@@ -117,55 +131,63 @@ def tokens_da_interacao(interaction, prompt: str = "") -> int:
     return (len(prompt) + len(saida)) // 3  # estimativa grosseira
 
 
-def registrar(tokens: int):
+def registrar(tokens: int, modelo: str = ""):
+    global _ultimo_modelo
+    modelo = modelo or os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
     dia, _ = _dia_e_reset()
     tokens = max(0, int(tokens or 0))
 
     with _lock:
-        if _mem["dia"] != dia:
-            _mem.update(dia=dia, pedidos=0, tokens=0)
-        _mem["pedidos"] += 1
-        _mem["tokens"] += tokens
+        _ultimo_modelo = modelo
+        atual = _mem.get(modelo)
+        if not atual or atual["dia"] != dia:
+            atual = {"dia": dia, "pedidos": 0, "tokens": 0}
+            _mem[modelo] = atual
+        atual["pedidos"] += 1
+        atual["tokens"] += tokens
 
         try:
             if memory_json._remoto():
-                _somar_remoto(dia, tokens)
+                _somar_remoto(modelo, dia, tokens)
             else:
-                _somar_local(dia, tokens)
+                _somar_local(modelo, dia, tokens)
         except (requests.RequestException, OSError, ValueError) as e:
             print(f"[usage_gemini] não consegui gravar: {e}")
 
 
 def obter(modelo: str = "") -> dict:
+    modelo = (
+        modelo
+        or _ultimo_modelo
+        or os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    )
     dia, reset_s = _dia_e_reset()
 
     try:
         if memory_json._remoto():
-            pedidos, tokens = _ler_remoto(dia)
+            pedidos, tokens = _ler_remoto(modelo, dia)
         else:
-            pedidos, tokens = _ler_local(dia)
+            pedidos, tokens = _ler_local(modelo, dia)
     except (requests.RequestException, OSError, ValueError) as e:
         print(f"[usage_gemini] não consegui ler: {e}")
+        m = _mem.get(modelo)
         pedidos, tokens = (
-            (_mem["pedidos"], _mem["tokens"]) if _mem["dia"] == dia else (0, 0)
+            (m["pedidos"], m["tokens"]) if m and m["dia"] == dia else (0, 0)
         )
 
-    limite_p = _limite("GEMINI_LIMITE_PEDIDOS_DIA")
-    limite_t = _limite("GEMINI_LIMITE_TOKENS_DIA")
+    suf = _sufixo(modelo)
+    limite_p = _limite("GEMINI_LIMITE_PEDIDOS_DIA" + suf)
+    limite_t = _limite("GEMINI_LIMITE_TOKENS_DIA" + suf)
 
     return {
         "provedor": "gemini",
-        "modelo": modelo or os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+        "modelo": modelo,
         "pedidos_usados": pedidos,
         "pedidos_limite": limite_p,
-        "pedidos_restantes": (
-            max(0, limite_p - pedidos) if limite_p else None
-        ),
+        "pedidos_restantes": max(0, limite_p - pedidos) if limite_p else None,
         "tokens_usados": tokens,
         "tokens_limite": limite_t,
-        "tokens_restantes": (
-            max(0, limite_t - tokens) if limite_t else None
-        ),
+        "tokens_restantes": max(0, limite_t - tokens) if limite_t else None,
         "reset_s": reset_s,
         "estimativa": True,
     }

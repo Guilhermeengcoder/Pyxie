@@ -15,7 +15,7 @@ from core.prompt import montar_prompt as _montar_prompt
 from core.llm_erros import ErroLLM, ErroCota, ErroIndisponivel, ErroEntradaGrande
 load_dotenv()
 
-GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
 # Modelo menor para tarefas internas (roteador, comentários, prompts de imagem).
 # Cada modelo do Groq tem cota própria, então isso poupa o GROQ_MODEL.
@@ -69,7 +69,20 @@ def traduzir_erro_groq(e: Exception) -> ErroLLM:
     return ErroLLM("groq", detalhe)
 
 
-def _montar_mensagens(comando: str, memoria: str) -> list:
+def _montar_mensagens(comando: str, memoria: str, tecnica: bool = False) -> list:
+    if tecnica:
+        # Tarefa interna (roteador etc.): sem persona, só o formato pedido.
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "Você executa tarefas técnicas internas. Obedeça "
+                    "exatamente ao formato de saída pedido, sem conversar."
+                ),
+            },
+            {"role": "user", "content": comando},
+        ]
+
     prompt = _montar_prompt(comando, memoria)
     regras, _, resto = prompt.partition("### Histórico")
     return [
@@ -83,13 +96,14 @@ def _eh_gpt_oss(modelo: str) -> bool:
 
 
 def _chamar(
-    comando: str, memoria: str, com_busca: bool, limite_saida=None, modelo=None
+    comando: str, memoria: str, com_busca: bool, limite_saida=None,
+    modelo=None, tecnica=False
 ) -> str:
     modelo = modelo or GROQ_MODEL
 
     argumentos = {
         "model": modelo,
-        "messages": _montar_mensagens(comando, memoria),
+        "messages": _montar_mensagens(comando, memoria, tecnica),
     }
 
     # reasoning_effort e browser_search só existem nos modelos gpt-oss;
@@ -140,7 +154,7 @@ def _chamar(
     return texto
 
 
-def _perguntar(comando: str, memoria: str, busca: bool, modelo: str) -> str:
+def _perguntar(comando: str, memoria: str, busca: bool, modelo: str, tecnica: bool = False) -> str:
     """Uma tentativa completa com UM modelo. Levanta ErroLLM em falha."""
     try:
         texto = _chamar(comando, memoria, busca, modelo=modelo)
@@ -185,9 +199,11 @@ def perguntar_groq(
     Em caso de falha levanta ErroCota, ErroIndisponivel ou ErroLLM.
     """
     modelo = MODELO_POR_TAREFA.get(tarefa, GROQ_MODEL)
+    
+    tecnica = tarefa in MODELO_POR_TAREFA
 
     try:
-        texto = _perguntar(comando, memoria, busca, modelo)
+        texto = _perguntar(comando, memoria, busca, modelo, tecnica)
         if texto.strip() or modelo == GROQ_MODEL:
             return texto
         print(f"[Groq] {modelo} respondeu vazio; usando {GROQ_MODEL}")
@@ -199,4 +215,4 @@ def perguntar_groq(
             f"usando {GROQ_MODEL}"
         )
 
-    return _perguntar(comando, memoria, busca, GROQ_MODEL)
+    return _perguntar(comando, memoria, busca, GROQ_MODEL, tecnica)

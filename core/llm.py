@@ -1,5 +1,6 @@
 import importlib
 import threading
+import time
 import os
 
 from core import llm_config
@@ -19,7 +20,7 @@ from core.llm_erros import (
 PROVEDORES_CONFIAVEIS = {"groq"}
 
 # Ordem de tentativa no modo Auto.
-ORDEM_AUTO = ["groq", "gemini"]
+ORDEM_AUTO = ["groq"]
 
 # Conteúdo grande (tarefa "longo"/"continuacao") tenta o Gemini primeiro,
 # em qualquer modo. Desligue com GEMINI_PARA_LONGO=0.
@@ -217,13 +218,16 @@ def perguntar_llm_detalhado(
         if tarefa != "conversa" and _PROVEDORES.get(nome, {}).get("tarefas"):
             extras["tarefa"] = tarefa
 
+        inicio = time.perf_counter()
         try:
             funcao = _carregar(nome, "modulo", "texto")
             texto = funcao(pergunta, ctx, **extras)
+            print(f"[LLM] {nome} respondeu em {time.perf_counter() - inicio:.1f}s")
             _registrar_uso(nome)
             return texto, nome
 
         except (ErroCota, ErroIndisponivel) as erro:
+            print(f"[LLM] {nome} falhou em {time.perf_counter() - inicio:.1f}s: {type(erro).__name__}")
             llm_config.pausar(nome, erro)
             primeiro_erro = primeiro_erro or erro
 

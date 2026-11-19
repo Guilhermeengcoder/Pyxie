@@ -116,6 +116,7 @@ def _uso_atual() -> dict:
     else:
         dados = usage.ultimo()
         dados.update(usage_groq.obter(GROQ_MODEL))
+        dados["gemini_uso"] = usage_gemini.obter()
 
     dados["provedor"] = provedor
     dados["modo"] = llm_config.obter_modo()

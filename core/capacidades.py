@@ -41,7 +41,7 @@ def _live_ativo() -> bool:
 
 def _modelos() -> dict:
     return {
-        "texto": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+        "texto": os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         "visao": os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b"),
         "gemini": os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
         "live": os.getenv("GEMINI_LIVE_MODEL", "gemini-3.8-live"),
@@ -146,8 +146,7 @@ def _detalhe_chat() -> str:
     return f"""
 DETALHES SOBRE VOCÊ (use só porque a pergunta é sobre o que você faz ou como funciona; responda com naturalidade, em primeira pessoa, no tamanho que a pergunta pedir):
 Como funciono por baixo:
-- Texto: modelo {m['texto']} no Groq; o Gemini ({m['gemini']}) é a reserva no modo Auto, ou fica ativo se o usuário escolher. O Gemini nunca recebe minha memória fixa.
-- Imagens enviadas: Groq com o modelo de visão {m['visao']} (ou Gemini).
+- Texto: modelo {m['texto']} no Groq. O Gemini ({m['gemini']}) só entra em pedidos muito grandes (arquivos e códigos extensos). O Gemini nunca recebe minha memória fixa.- Imagens enviadas: Groq com o modelo de visão {m['visao']} (ou Gemini).
 - Pesquisa: Tavily. Leitura de links e páginas: Firecrawl. Fotos reais: busca de imagens do Tavily, baixadas e montadas no servidor com a biblioteca Pillow (colagem quando há vários itens).
 - Imagens geradas: Cloudflare Workers AI, modelo {m['imagem']}; pode errar anatomia, mãos e textos.
 - Gráficos: desenhados no servidor com matplotlib; as contas (como a sobra) são feitas pelo código, não pelo modelo.

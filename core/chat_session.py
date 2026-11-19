@@ -29,6 +29,7 @@ class ChatSession:
         self.regeneracao_contexto = None
         self.regeneracao_memoria_fixa = ""
         self.regeneracao_leve = False
+        self.regeneracao_tarefa = "conversa"
 
     def touch(self):
         self.last_used = time.time()

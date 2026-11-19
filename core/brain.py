@@ -485,11 +485,14 @@ def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "",
         "Se ele informou uma renda ou total além dos gastos, coloque esse número "
         'no campo "renda" e NÃO crie item de sobra/restante. '
         'Não invente dados: se faltarem números, use "nenhuma".\n'
-        '- "busca": se a resposta depende de fatos que podem ter mudado ou dos '
-        "quais você não tem certeza (pessoas, eventos, rankings, preços, leis, "
-        "produtos, esportes, notícias), OU se o usuário contesta a resposta "
-        "anterior (use a pergunta anterior na consulta). Nunca use busca para "
-        "pedidos de imagem ou gráfico.\n"
+        '- "busca": qualquer pergunta sobre fatos do mundo real (pessoas, '
+        "eventos, resultados, campeões, datas, números, rankings, preços, leis, "
+        "produtos, lugares, esportes, notícias), MESMO que você ache que sabe a "
+        "resposta, OU se o usuário contesta a resposta anterior (use a pergunta "
+        "anterior na consulta). Ignore erros de digitação (ex.: 'uem' = 'quem'). "
+        "Uma pergunta nova e independente NÃO herda o assunto da conversa "
+        "recente: monte a consulta só com o que a própria mensagem pergunta. "
+        "Nunca use busca para pedidos de imagem ou gráfico.\n"
         '- "nenhuma": conversa, opinião, criação de texto, código, matemática, '
         "conhecimento atemporal, problemas técnicos e dúvidas sobre "
         "os recursos da PYXIE.\n"
@@ -1729,6 +1732,7 @@ class Brain:
             sessao.regeneracao_pergunta = None
             sessao.regeneracao_contexto = None
             sessao.regeneracao_memoria_fixa = ""
+            sessao.regeneracao_tarefa = "conversa"  
             return
 
         sessao.stm.add_message("assistant", resposta)
