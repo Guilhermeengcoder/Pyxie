@@ -14,13 +14,14 @@
 import os
 import re
 
+from core import usage_groq
 from modules.groq_ai import client, _montar_prompt, traduzir_erro_groq
 from core.usage import registrar_headers
 from core.llm_erros import ErroLLM
 
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 
-MAX_TOKENS_RESPOSTA = 900
+MAX_TOKENS_RESPOSTA = 1400
 
 
 def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "") -> str:
@@ -41,8 +42,8 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
 
     pergunta += (
         f"\n(O usuário anexou {len(imagens)} imagem(ns). Responda com base no que você "
-        "vê nelas. Dê direto a resposta final, sem mostrar raciocínio, rascunho ou "
-        "autocorreções.)"
+        "vê nelas. Se precisar pensar ou rascunhar, faça isso antes; escreva a resposta "
+        "final, limpa e sem autocorreções, entre <resposta> e </resposta>.)"
     )
 
     prompt = _montar_prompt(pergunta, memoria)
@@ -65,13 +66,26 @@ def perguntar_groq_imagem(comando: str, imagem_data_url: str, memoria: str = "")
             pass
 
         response = resposta_bruta.parse()
-        
+
+        uso = getattr(response, "usage", None)
+        if uso:
+            print(
+                f"[Groq visão] {GROQ_VISION_MODEL} tokens: entrada={uso.prompt_tokens} "
+                f"saída={uso.completion_tokens} total={uso.total_tokens}"
+            )
+            try:
+                usage_groq.registrar(GROQ_VISION_MODEL, uso.total_tokens)
+            except Exception as e:
+                print(f"[usage_groq] {e}")
+
         escolha = response.choices[0]
         if escolha.finish_reason == "length":
             raise ErroLLM("groq", "resposta cortada (limite de tokens)")
         texto = escolha.message.content or ""
 
         texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.DOTALL).strip()
+        achados = re.findall(r"<resposta>(.*?)</resposta>", texto, flags=re.DOTALL)
+        texto = achados[-1].strip() if achados else re.sub(r"</?resposta>", "", texto).strip()
 
     except ErroLLM:
         raise

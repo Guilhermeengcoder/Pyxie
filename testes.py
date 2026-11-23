@@ -1,42 +1,40 @@
-import asyncio
-import json
 import os
+import time
 
 from dotenv import load_dotenv
 load_dotenv()
 
-import websockets
+from google import genai
+from google.genai import types
+from core.prompt import montar_prompt
 
-URL = "ws://localhost:10000/ws/voz"
-PERGUNTAS = ["Conta uma piada curta.", "Qual é a capital da Austrália?", "Quem ganhou a Bola de Ouro este ano?"]
-
-async def main():
-    async with websockets.connect(URL, max_size=None) as ws:
-        await ws.send(json.dumps(
-            {"token": os.getenv("PYXIE_TOKEN"), "chat_id": "teste-ws"}
-        ))
-        print("servidor:", await ws.recv())
-
-        for pergunta in PERGUNTAS:
-            print(f"\nVocê: {pergunta}")
-            await ws.send(json.dumps({"texto": pergunta}))
-            bytes_audio, legenda = 0, ""
-
-            while True:
-                msg = await ws.recv()
-                if isinstance(msg, bytes):
-                    bytes_audio += len(msg)
-                    continue
-                d = json.loads(msg)
-                if d["tipo"] == "legenda" and d["quem"] == "pyxie":
-                    legenda = d["texto"]
-                elif d["tipo"] == "fim_turno":
-                    break
-                elif d["tipo"] in ("encerrada", "erro"):
-                    print(d)
-                    return
-
-            print(f"PYXIE: {legenda}  [{bytes_audio} bytes de áudio]")
+KEY = os.getenv("GEMINI_API_KEY")
+codigo = open("api/voz.py", encoding="utf-8").read()
+GRANDE = montar_prompt("analise esse código\n\n```\n" + codigo + "\n```", "")
 
 
-asyncio.run(main()) 
+def rodar(rotulo, modelo, prompt, timeout_ms):
+    client = genai.Client(
+        api_key=KEY, http_options=types.HttpOptions(timeout=timeout_ms)
+    )
+    t = time.perf_counter()
+    try:
+        i = client.interactions.create(model=modelo, input=prompt)
+        dt = time.perf_counter() - t
+        print(f"\n[{rotulo}] {modelo} OK em {dt:.1f}s")
+        print("  saída (chars):", len(i.output_text or ""))
+        print("  usage:", getattr(i, "usage", None))
+    except Exception as e:
+        dt = time.perf_counter() - t
+        print(f"\n[{rotulo}] {modelo} FALHOU em {dt:.1f}s: "
+              f"{type(e).__name__}: {str(e)[:150]}")
+
+
+# 1) unidade do timeout: se for ms, estoura em ~0,5 s; se for s, não estoura
+rodar("timeout 500", "gemini-3.5-flash-lite", "diga ok", 500)
+
+# 2) mesmo arquivo grande no Lite
+rodar("grande lite", "gemini-3.5-flash-lite", GRANDE, 300_000)
+
+# 3) mesmo arquivo grande no 3.6 (gasta 1 dos 20 pedidos/dia)
+rodar("grande 3.6", "gemini-3.6-flash", GRANDE, 300_000)

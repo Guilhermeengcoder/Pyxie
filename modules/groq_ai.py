@@ -157,11 +157,12 @@ def _chamar(
 def _perguntar(comando: str, memoria: str, busca: bool, modelo: str, tecnica: bool = False) -> str:
     """Uma tentativa completa com UM modelo. Levanta ErroLLM em falha."""
     try:
-        texto = _chamar(comando, memoria, busca, modelo=modelo)
+        texto = _chamar(comando, memoria, busca, modelo=modelo, tecnica=tecnica)
 
         if not texto:
             texto = _chamar(
-                comando, memoria, False, limite_saida=2000, modelo=modelo
+                comando, memoria, False, limite_saida=2000, modelo=modelo,
+                tecnica=tecnica,
             )
 
         return texto
@@ -176,6 +177,7 @@ def _perguntar(comando: str, memoria: str, busca: bool, modelo: str, tecnica: bo
                     False,
                     limite_saida=2000,
                     modelo=modelo,
+                    tecnica=tecnica,
                 )
             except Exception as e2:
                 e = e2

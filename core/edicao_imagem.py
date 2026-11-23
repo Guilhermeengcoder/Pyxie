@@ -12,12 +12,17 @@ import json
 import re
 import unicodedata
 import uuid
+import os
+
+import requests
 
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from core.cloudflare_imagem import PASTA, caminho_da_imagem
 from core.llm import perguntar_llm
-from core.llm_erros import ErroLLM
+from core import cloudflare_imagem as cf
+from core import usage_servicos
+from core.llm_erros import ErroLLM, ErroCota, ErroIndisponivel
 from core import galeria
 
 Image.MAX_IMAGE_PIXELS = 40_000_000
@@ -35,6 +40,8 @@ _EDITAR = re.compile(
 )
 _TAMANHO = re.compile(
     r"\b(aument\w+|diminu\w+|reduz\w*|ampl\w+)\b.{0,30}\b(imagem|foto|tamanho|largura|altura|resolucao)\b"
+    r"|\b(aument\w+|diminu\w+|reduz\w*|ampl\w+)\b.{0,15}\b\d{1,3}\s*%"
+    r"|\b(remov\w+|tir[ae]|apag\w+|troc\w+|mud\w+)\b.{0,30}\b(pessoa|objeto|fundo|cor)\b"
 )
 
 
@@ -114,7 +121,10 @@ def interpretar(mensagem: str):
         '{"op":"preto_e_branco"}  {"op":"sepia"}  {"op":"negativo"}  {"op":"desfocar","raio":4}\n'
         f"Máximo de {MAX_OPERACOES} operações, na ordem pedida.\n"
         'Se o pedido exigir algo fora da lista (remover ou adicionar objeto, mudar cor de algo, '
-        'estilo artístico), responda {"operacoes": [], "criativa": true}. '
+        'estilo artístico), responda {"operacoes": [], "criativa": true, "instrucao": "..."} '
+        'onde instrucao é UMA frase imperativa em INGLÊS com só a mudança pedida, terminando em '
+        '"Keep everything else unchanged." (ex.: "Remove the person in the background. '
+        'Keep everything else unchanged."). '
         'Se a mensagem não for um pedido de edição, responda {"operacoes": [], "criativa": false}.\n\n'
         f"Pedido: {mensagem}"
     )
@@ -131,7 +141,11 @@ def interpretar(mensagem: str):
         return None
     ops = dados.get("operacoes")
     ops = [o for o in ops if isinstance(o, dict)][:MAX_OPERACOES] if isinstance(ops, list) else []
-    return {"operacoes": ops, "criativa": bool(dados.get("criativa"))}
+    return {
+        "operacoes": ops,
+        "criativa": bool(dados.get("criativa")),
+        "instrucao": str(dados.get("instrucao") or "").strip()[:400],
+    }
 
 
 # ---------------- aplicar (Pillow) ----------------
@@ -229,3 +243,72 @@ def aplicar_e_salvar(imagem_id: str, ops: list) -> dict:
     if not feitas:
         raise ValueError("nenhuma operação")
     return {"id": _salvar(img), "resumo": ", ".join(feitas)}
+
+MODELO_EDICAO = os.getenv("CLOUDFLARE_MODELO_EDICAO", "@cf/black-forest-labs/flux-2-klein-9b")
+LADO_ENTRADA = 480   # a Cloudflare exige entrada menor que 512x512
+LADO_SAIDA = int(os.getenv("CLOUDFLARE_EDICAO_LADO") or 1024)
+
+
+def editar_criativa(imagem_id: str, instrucao: str) -> dict:
+    """Edição por IA (FLUX.2 klein, imagem para imagem). Devolve {"id"}.
+    Levanta ErroLLM (ou ValueError/OSError se a imagem não abrir)."""
+    token = (os.getenv("CLOUDFLARE_API_TOKEN") or "").strip()
+    conta = (os.getenv("CLOUDFLARE_ACCOUNT_ID") or "").strip()
+    if not token or not conta:
+        raise ErroLLM("cloudflare", "CLOUDFLARE_API_TOKEN/ACCOUNT_ID não configurados")
+
+    instrucao = (instrucao or "").strip()[:500]
+    if not instrucao:
+        raise ErroLLM("cloudflare", "instrução vazia")
+
+    if usage_servicos.obter("cloudflare")["pedidos"] >= cf._max_por_dia():
+        raise ErroCota("cloudflare", "limite diário de imagens da PYXIE atingido")
+
+    img = _abrir_id(imagem_id)
+    w, h = img.size
+
+    entrada = ImageOps.contain(img, (LADO_ENTRADA, LADO_ENTRADA))
+    buf = io.BytesIO()
+    entrada.save(buf, "JPEG", quality=92)
+
+    escala = min(1.0, LADO_SAIDA / max(w, h))
+    sw = max(256, int(round(w * escala / 16)) * 16)
+    sh = max(256, int(round(h * escala / 16)) * 16)
+
+    url = f"https://api.cloudflare.com/client/v4/accounts/{conta}/ai/run/{MODELO_EDICAO}"
+
+    try:
+        r = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            data={"prompt": instrucao, "width": str(sw), "height": str(sh)},
+            files={"input_image_0": ("imagem.jpg", buf.getvalue(), "image/jpeg")},
+            timeout=cf.TIMEOUT,
+        )
+    except (requests.Timeout, requests.ConnectionError) as e:
+        raise ErroIndisponivel("cloudflare", str(e)[:200]) from e
+    except requests.RequestException as e:
+        raise ErroLLM("cloudflare", str(e)[:200]) from e
+
+    if r.status_code == 429:
+        raise ErroCota("cloudflare", "HTTP 429")
+    if r.status_code >= 500:
+        raise ErroIndisponivel("cloudflare", f"HTTP {r.status_code}")
+    if r.status_code != 200:
+        raise ErroLLM("cloudflare", f"HTTP {r.status_code}: {r.text[:200]}")
+
+    conteudo = r.content
+    if "json" in (r.headers.get("Content-Type") or "").lower():
+        try:
+            b64 = (r.json().get("result") or {}).get("image") or ""
+            conteudo = base64.b64decode(b64)
+        except Exception as e:
+            raise ErroLLM("cloudflare", "resposta JSON sem imagem") from e
+
+    try:
+        nova = _abrir_bytes(conteudo)
+    except Exception as e:
+        raise ErroLLM("cloudflare", "imagem devolvida ilegível") from e
+
+    usage_servicos.registrar("cloudflare", cf._neuronios_por_imagem())
+    return {"id": _salvar(nova)}

@@ -63,13 +63,17 @@ def _gerar_e_salvar(prompt: str, imagem_id: str) -> dict:
         raise ErroCota("cloudflare", "limite diário de imagens da PYXIE atingido")
 
     url = f"https://api.cloudflare.com/client/v4/accounts/{conta}/ai/run/{MODELO}"
-    corpo = {
-        "prompt": prompt,
-        "negative_prompt": "blurry, distorted, low quality, text, watermark, extra limbs, extra legs, extra fingers, deformed, bad anatomy",
-        "width": LARGURA,
-        "height": ALTURA,
-        "num_steps": ETAPAS,
-    }
+    
+    if "flux-1-schnell" in MODELO:
+        corpo = {"prompt": prompt, "steps": ETAPAS}
+    else:
+        corpo = {
+            "prompt": prompt,
+            "negative_prompt": "blurry, distorted, low quality, text, watermark, extra limbs, extra legs, extra fingers, deformed, bad anatomy",
+            "width": LARGURA,
+            "height": ALTURA,
+            "num_steps": ETAPAS,
+        }
 
     try:
         r = requests.post(

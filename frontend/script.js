@@ -5255,6 +5255,7 @@ function criarCartaoGaleria(item, grade, info) {
             }
 
             cartao.remove();
+            renderizarMensagens();   // a imagem apagada some do chat na hora
 
             if (!grade.children.length) {
                 info.textContent = "A galeria está vazia.";

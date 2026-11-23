@@ -377,6 +377,7 @@ def preparar_prompt_imagem(descricao: str) -> str:
         # Rejeita respostas vazias, em português ou com instruções em vez de prompt.
         resposta_invalida = (
             not prompt
+            or "[[" in prompt
             or re.search(r"[ãõçáéíóúâêô]", prompt, re.I)
             or re.match(r"(?i)^(?:i['’]m sorry|sorry|i need|i can['’]?t|i cannot|as an ai)", prompt)
             or prompt.lower().startswith(
@@ -439,7 +440,7 @@ def _ler_json_tolerante(texto):
     except ValueError:
         return None
 
-def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "", conversa: str = ""):
+def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "", conversa: str = "", tem_imagem: bool = False):
     """Roteador: decide entre imagem, busca ou nenhuma das duas.
     Devolve {"acao", "busca", "consulta", "descricao"} ou None se falhar."""
     hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")
@@ -456,11 +457,18 @@ def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "",
         if conversa else ""
     )
 
+    bloco_imagem = (
+        '- "sobre_imagem": pergunta sobre o CONTEÚDO da imagem mais recente da conversa '
+        "(o que há nela, cores, objetos, pessoas, texto, se algo aparece), sem pedir "
+        "para editá-la nem gerar outra.\n"
+        if tem_imagem else ""
+    )
+
     instrucao = (
         "Tarefa técnica, EXCEÇÃO à regra de responder em português: "
         "o campo consulta deve estar em INGLÊS; os outros campos ficam no "
         "idioma do usuário.\n"
-        'Responda SOMENTE com JSON: {"acao": "imagem" | "mostrar_imagem" | "grafico" | "busca" | "nenhuma", '
+        'Responda SOMENTE com JSON: {"acao": "imagem" | "mostrar_imagem" | "grafico" | "busca" | "sobre_imagem" | "nenhuma", '
         '"consulta": "query curta em inglês", "descricao": "o que desenhar", '
         '"imagens": [{"rotulo": "nome curto", "consulta": "query em inglês"}], '
         '"grafico": {"tipo": "barras|linha|pizza", "titulo": "...", '
@@ -495,6 +503,7 @@ def decidir_busca(mensagem: str, ultima_pergunta=None, chaves_memoria: str = "",
         "Uma pergunta nova e independente NÃO herda o assunto da conversa "
         "recente: monte a consulta só com o que a própria mensagem pergunta. "
         "Nunca use busca para pedidos de imagem ou gráfico.\n"
+        f"{bloco_imagem}"
         '- "nenhuma": conversa, opinião, gostos e curiosidades pessoais do usuário '
         "(time, banda, hobbies; busque só se ele pedir placar, resultado ou notícia), "
         "criação de texto, código, matemática, "
@@ -1295,6 +1304,11 @@ class Brain:
                     spec["valores"].append(round(renda - gastos, 2))
             resultado = grafico.gerar(spec)
             sessao.imagem_pendente = resultado["id"]
+            sessao.ultima_imagem_id = resultado["id"]
+            self._galeria(
+                sessao, resultado["id"], "grafico",
+                str(spec.get("titulo") or "Gráfico")[:200],
+            )
             texto = (
                 comentar_grafico(spec, contexto)
                 or "Pronto, aqui está o gráfico."
@@ -1324,7 +1338,12 @@ class Brain:
                 )
                 sessao.imagem_pendente = imagem["id"]
                 sessao.ultima_imagem_id = imagem["id"]
-                resumo = descricao.strip().splitlines()[-1][:80]
+                self._galeria(sessao, imagem["id"], "gerada", descricao[:200])
+                resumo = re.sub(
+                    r"^(?:de|do|da)\s+", "",
+                    descricao.strip().splitlines()[-1][:80],
+                    flags=re.IGNORECASE,
+                )
                 texto = f"Pronto! Aqui está a imagem: {resumo}."
             except ErroLLM as erro:
                 print(f"[Cloudflare] {erro}")
@@ -1384,12 +1403,32 @@ class Brain:
             return None
 
         if pedido["criativa"]:
-            texto = (
-                "Isso é uma edição criativa e ainda não faço (precisaria de um modelo "
-                "de edição de imagem). Por enquanto faço ajustes simples: cortar, girar, "
-                "espelhar, redimensionar, brilho, contraste, saturação, nitidez, "
-                "preto e branco, sépia, negativo e desfoque."
-            )
+            instrucao = pedido.get("instrucao") or ""
+            if not instrucao or detectar_segredos(mensagem):
+                texto = "Não consegui entender essa edição. Pode descrever o que mudar na imagem?"
+            else:
+                try:
+                    nova = edicao_imagem.editar_criativa(
+                        sessao.ultima_imagem_id, instrucao
+                    )
+                    sessao.imagem_pendente = nova["id"]
+                    sessao.ultima_imagem_id = nova["id"]
+                    texto = (
+                        "Pronto, editei a imagem. Como a edição é feita por IA, ela "
+                        "pode ter mudado outros detalhes além do que você pediu."
+                    )
+                    self._galeria(
+                        sessao, nova["id"], "editada",
+                        f"edição por IA (pedido: {mensagem[:100]})",
+                    )
+                except (ErroLLM, ValueError, OSError) as erro:
+                    print(f"[edicao criativa] {erro}")
+                    texto = (
+                        "Não consegui editar a imagem agora (limite de uso ou serviço "
+                        "fora do ar). Tente de novo mais tarde."
+                        if isinstance(erro, (ErroCota, ErroIndisponivel))
+                        else "Não consegui fazer essa edição na imagem."
+                    )
         elif not pedido["operacoes"]:
             return None
         else:
@@ -1416,7 +1455,27 @@ class Brain:
         """Guarda na galeria. Nunca levanta erro."""
         galeria.registrar(imagem_id, origem, descricao, sessao.chat_id)
         
-        # ----------------------------------------------------------
+    def _perguntar_sobre_ultima_imagem(self, sessao, mensagem_original, pergunta):
+        """Responde sobre a imagem mais recente usando o modelo de visão."""
+        url = galeria.como_data_url(sessao.ultima_imagem_id)
+        if not url:
+            return None
+        try:
+            resposta = perguntar_llm_imagem(
+                pergunta, url, self._conversa_recente(sessao, n=4, max_chars=1000)
+            )
+        except Exception as erro:
+            print(f"[sobre_imagem] {erro}")
+            resposta_final = self.personality.aplicar(mensagem_de_erro_llm(erro))
+            self._finalizar(sessao, mensagem_original, resposta_final, erro=True)
+            return resposta_final
+
+        resposta_final = self.personality.aplicar(resposta)
+        sessao.regeneracao_pergunta = None
+        self._finalizar(sessao, mensagem_original, resposta_final)
+        return resposta_final
+        
+    # ----------------------------------------------------------
     # REVER / COMPARAR IMAGENS DA GALERIA
     # ----------------------------------------------------------
 
@@ -1529,6 +1588,7 @@ class Brain:
                 sessao.ultima_pergunta,
                 self._chaves_memoria(),
                 conversa=self._conversa_recente(sessao, n=2, max_chars=600),
+                tem_imagem=bool(sessao.ultima_imagem_id),
             )
             
         # Pergunta sobre as capacidades dela: responde pelo prompt, sem
@@ -1550,6 +1610,17 @@ class Brain:
             itens = decisao_busca.get("imagens")
             if isinstance(itens, list) and itens:
                 return self._mostrar_imagens(sessao, mensagem_original, itens)
+
+        if (
+            decisao_busca
+            and decisao_busca.get("acao") == "sobre_imagem"
+            and sessao.ultima_imagem_id
+        ):
+            resposta_img = self._perguntar_sobre_ultima_imagem(
+                sessao, mensagem_original, mensagem_para_ia
+            )
+            if resposta_img:
+                return resposta_img
 
         # ------------------------------------------------------
         # CONTEÚDO EXTENSO (código, prompts, textos longos)
